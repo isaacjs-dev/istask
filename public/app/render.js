@@ -1,0 +1,587 @@
+/* Vanilla render layer. Reads window.state, returns HTML strings.
+   window.Render: sidebarHTML, headerHTML, updateHeader, bodyHTML, chatHTML, suggestHTML */
+(function () {
+  const TD = window.TaskData;
+  const { PRIORITY, STATUS, SECTIONS, PROJECTS, COLUMNS, MONTHS, TODAY, parseDue } = TD;
+  const icon = window.icon;
+  const U = window.UI;
+
+  const STATUS_FILTERS = [
+    { id: "pendente", label: "Pendentes", icon: "Inbox", color: "var(--s-pendente)" },
+    { id: "andamento", label: "Em andamento", icon: "Clock2", color: "var(--s-andamento)" },
+    { id: "aguardando", label: "Aguardando terceiros", icon: "Hourglass", color: "var(--s-aguardando)" },
+    { id: "concluido", label: "Concluídas", icon: "Check", color: "var(--s-concluido)" },
+    { id: "atrasada", label: "Atrasadas", icon: "Alert", color: "var(--p-urgente)" },
+  ];
+  const PROJ_ICON = { geral: "Folder", sistemas: "Settings", processos: "Refresh", integracoes: "Merge", comunicacao: "Comment" };
+
+  const PAGES = [
+    { id: "tarefas", label: "Tarefas", icon: "Checklist" },
+    { id: "notas", label: "Notas", icon: "NotebookPen" },
+    { id: "diario", label: "Diário", icon: "BookOpen" },
+  ];
+
+  const SUGGESTIONS = [
+    { icon: "Plus", text: "Adiciona tarefa Revisar contrato amanhã, prioridade alta" },
+    { icon: "Merge", text: "Junta as tarefas duplicadas da API da EL" },
+    { icon: "Check", text: "Conclui a tarefa do orçamento do Stenio" },
+    { icon: "Flag", text: "Deixa o Eduardo como urgente" },
+  ];
+  window.SUGGESTIONS = SUGGESTIONS;
+
+  // lista de projetos dinâmica (state.projects vem do backend; cai em PROJECTS se vazio)
+  function projectList() {
+    const sp = (window.state && window.state.projects) || [];
+    if (sp.length) {
+      const aw = window.state.activeWorkspaceId;
+      return sp.filter((p) => !aw || String(p.workspaceId) === String(aw)).map((p) => ({ id: p.slug, name: p.name, icon: p.icon }));
+    }
+    return PROJECTS.map((p) => ({ id: p.id, name: p.name, icon: null }));
+  }
+
+  function activeWorkspaceName() {
+    const ws = (window.state.workspaces || []).find((w) => String(w.id) === String(window.state.activeWorkspaceId));
+    return ws ? ws.name : "Workspace";
+  }
+
+  // ---------- SIDEBAR ----------
+  function sidebarHTML() {
+    const tasks = window.state.tasks;
+    const projCount = (id) => id === "geral" ? tasks.length : tasks.filter((t) => t.project === id).length;
+    const statusCount = (id) => id === "atrasada" ? tasks.filter((t) => TD.isOverdue(t)).length : tasks.filter((t) => t.status === id).length;
+    const prioCount = (id) => tasks.filter((t) => t.priority === id && t.status !== "concluido").length;
+    const af = window.state.filter, ap = window.state.project, page = window.state.page || "tarefas";
+
+    const workspaces = window.state.workspaces || [];
+    const activeWs = window.state.activeWorkspaceId;
+    const wsGroup = workspaces.length ? `
+        <div class="sb-group sb-ws-group">
+          <div class="sb-group-title">Área de Trabalho <button class="sb-add" data-act="new-workspace" title="Nova área">${icon("Plus", 13)}</button></div>
+          ${workspaces.map((w) => `
+            <button class="sb-item sb-ws-item${String(activeWs) === String(w.id) ? " active" : ""}" data-act="workspace" data-id="${w.id}">
+              <span class="sb-ico">${icon(w.icon || "Folder", 17)}</span>
+              <span class="sb-item-label">${U.esc(w.name)}</span>
+              ${w.isOwner === false ? `<span class="sb-ws-shared" title="Compartilhada por ${U.esc(w.ownerName || "")}">${icon("User", 12)}</span>` : ""}
+            </button>`).join("")}
+          <button class="sb-item sb-ws-manage" data-act="manage-workspaces">
+            <span class="sb-ico">${icon("Settings", 15)}</span>
+            <span class="sb-item-label">Gerenciar áreas</span>
+          </button>
+        </div>` : "";
+
+    const menuGroup = `
+        <div class="sb-group">
+          <div class="sb-group-title">Menu</div>
+          ${PAGES.map((p) => `<button class="sb-item${page === p.id ? " active" : ""}" data-act="page" data-id="${p.id}">
+            <span class="sb-ico">${icon(p.icon, 17)}</span>
+            <span class="sb-item-label">${p.label}</span>
+          </button>`).join("")}
+        </div>`;
+
+    const tarefasGroups = page !== "tarefas" ? "" : `
+        <div class="sb-group">
+          <div class="sb-group-title">Projetos <button class="sb-add" data-act="new-project" title="Novo projeto">${icon("Plus", 13)}</button></div>
+          ${projectList().map((p) => `
+            <button class="sb-item${ap === p.id ? " active" : ""}" data-act="project" data-id="${p.id}">
+              <span class="sb-ico">${icon(PROJ_ICON[p.id] || p.icon || "Folder", 17)}</span>
+              <span class="sb-item-label">${U.esc(p.name)}</span>
+              <span class="sb-count">${projCount(p.id)}</span>
+            </button>`).join("")}
+        </div>
+        <div class="sb-group">
+          <div class="sb-group-title">Filtros</div>
+          ${STATUS_FILTERS.map((f) => {
+            const on = af === f.id;
+            return `<button class="sb-item${on ? " active" : ""}" data-act="filter" data-id="${f.id}">
+              <span class="sb-ico"${on ? "" : ` style="color:${f.color}"`}>${icon(f.icon, 16)}</span>
+              <span class="sb-item-label">${f.label}</span>
+              <span class="sb-count">${statusCount(f.id)}</span>
+            </button>`;
+          }).join("")}
+        </div>
+        <div class="sb-group">
+          <div class="sb-group-title">Prioridades</div>
+          ${Object.values(PRIORITY).map((p) => {
+            const fid = "prio:" + p.id, on = af === fid;
+            return `<button class="sb-item${on ? " active" : ""}" data-act="filter" data-id="${fid}">
+              <span class="sb-dot" style="background:${p.color}"></span>
+              <span class="sb-item-label">${p.label}</span>
+              <span class="sb-count">${prioCount(p.id)}</span>
+            </button>`;
+          }).join("")}
+        </div>`;
+
+    return `
+      <div class="sb-brand">
+        <div class="sb-logo">${icon("Sparkles", 20)}</div>
+        <div>
+          <div class="sb-brand-name">Minhas Tarefas</div>
+          <div class="sb-brand-sub">Organize com o assistente</div>
+        </div>
+      </div>
+      <button class="sb-new" data-act="add-task">${icon("Plus", 17)} Nova Lista</button>
+      <div class="sb-scroll scroll">
+        ${wsGroup}
+        ${menuGroup}
+        ${tarefasGroups}
+        <div class="sb-group">
+          <div class="sb-group-title">Sistema</div>
+          <button class="sb-item" data-act="settings">
+            <span class="sb-ico">${icon("Settings", 17)}</span>
+            <span class="sb-item-label">Configurações</span>
+          </button>
+        </div>
+      </div>
+      <div class="sb-foot">
+        ${U.avatarHTML(TD.me, "sb-ava")}
+        <div style="flex:1;min-width:0">
+          <div class="sb-foot-name">${U.esc(TD.me.name)}</div>
+          <div class="sb-foot-mail">${U.esc(TD.me.email || "workspace pessoal")}</div>
+        </div>
+        <button class="sb-ico" data-act="logout" title="Sair" style="border:none;background:none;color:var(--ink-3)">${icon("Logout", 17)}</button>
+      </div>`;
+  }
+
+  // ---------- HEADER ----------
+  const VIEWS = [
+    { id: "list", label: "Lista", icon: "List" },
+    { id: "kanban", label: "Kanban", icon: "Kanban" },
+    { id: "calendar", label: "Calendário", icon: "Calendar" },
+    { id: "chat", label: "Chat", icon: "Comment" },
+  ];
+
+  function headerHTML() {
+    const p = window.state.page;
+    if (p === "notas") return notesHeaderHTML();
+    if (p === "diario") return diarioHeaderHTML();
+    return tarefasHeaderHTML();
+  }
+
+  function tarefasHeaderHTML() {
+    return `
+      <div class="c-head-top">
+        <button class="c-menu" data-act="nav" title="Menu" aria-label="Abrir menu">${icon("Menu", 20)}</button>
+        <div class="c-title-wrap">
+          <div class="c-bread"><span class="c-bread-ws">${U.esc(activeWorkspaceName())}</span> ${icon("ChevRight", 13)} <span class="c-bread-proj">Geral</span></div>
+          <h1 class="c-title">Minhas Tarefas</h1>
+          <div class="c-sub"></div>
+        </div>
+        <div class="c-actions">
+          <div class="search">
+            <span class="sb-ico">${icon("Search", 16)}</span>
+            <input id="searchInput" placeholder="Buscar tarefas…" />
+          </div>
+          <button class="btn-ghost">${icon("Bell", 18)}</button>
+          <button class="btn-primary" data-act="add-task">${icon("Plus", 16)} Nova tarefa</button>
+        </div>
+      </div>
+      <div class="c-head-bottom">
+        <div class="tabs">
+          ${VIEWS.map((v) => `<button class="tab" data-act="view" data-id="${v.id}"><span class="sb-ico">${icon(v.icon, 16)}</span>${v.label}</button>`).join("")}
+        </div>
+        <div class="c-meta"><span class="c-meta-dyn"></span></div>
+      </div>`;
+  }
+
+  function notesHeaderHTML() {
+    return `
+      <div class="c-head-top">
+        <button class="c-menu" data-act="nav" title="Menu" aria-label="Abrir menu">${icon("Menu", 20)}</button>
+        <div class="c-title-wrap">
+          <div class="c-bread"><span class="c-bread-ws">${U.esc(activeWorkspaceName())}</span> ${icon("ChevRight", 13)} <span class="c-bread-proj">Notas</span></div>
+          <h1 class="c-title">Notas</h1>
+          <div class="c-sub"></div>
+        </div>
+        <div class="c-actions">
+          <div class="search">
+            <span class="sb-ico">${icon("Search", 16)}</span>
+            <input id="searchInput" placeholder="Buscar notas…" />
+          </div>
+          <div class="note-view-toggle note-m3">
+            <button class="${window.state.notesViewMode !== "list" ? "active" : ""}" data-note-act="set-view-mode" data-mode="grid" title="Visualizar em grade">
+              <span class="material-symbols-outlined">grid_view</span>
+            </button>
+            <button class="${window.state.notesViewMode === "list" ? "active" : ""}" data-note-act="set-view-mode" data-mode="list" title="Visualizar em lista">
+              <span class="material-symbols-outlined">view_list</span>
+            </button>
+          </div>
+          <button class="btn-primary" data-note-act="new">${icon("Plus", 16)} Nova nota</button>
+        </div>
+      </div>`;
+  }
+
+  function diarioHeaderHTML() {
+    return `
+      <div class="c-head-top">
+        <button class="c-menu" data-act="nav" title="Menu" aria-label="Abrir menu">${icon("Menu", 20)}</button>
+        <div class="c-title-wrap">
+          <div class="c-bread"><span class="c-bread-ws">${U.esc(activeWorkspaceName())}</span> ${icon("ChevRight", 13)} <span class="c-bread-proj">Diário</span></div>
+          <h1 class="c-title">Diário</h1>
+          <div class="c-sub"></div>
+        </div>
+        <div class="c-actions">
+          <div class="search">
+            <span class="sb-ico">${icon("Search", 16)}</span>
+            <input id="searchInput" placeholder="Buscar no diário…" />
+          </div>
+          <button class="btn-primary" data-diary-act="new">${icon("Plus", 16)} Nova entrada</button>
+        </div>
+      </div>`;
+  }
+
+  function updateHeader() {
+    const wsEl = document.querySelector(".c-bread-ws");
+    if (wsEl) wsEl.textContent = activeWorkspaceName();
+    const p = window.state.page;
+    if (p === "notas") return updateNotesHeader();
+    if (p === "diario") return updateDiarioHeader();
+    return updateTarefasHeader();
+  }
+
+  function updateTarefasHeader() {
+    const s = window.state, tasks = s.tasks;
+    const projName = ((window.state.projects || []).find((p) => (p.slug || p.id) === s.project) || {}).name || "Geral";
+    const counts = {
+      done: tasks.filter((t) => t.status === "concluido").length,
+      open: tasks.filter((t) => t.status !== "concluido").length,
+      overdue: tasks.filter((t) => TD.isOverdue(t)).length,
+    };
+    document.querySelector(".c-bread-proj").textContent = projName;
+    document.querySelector(".c-title").textContent = s.project === "geral" ? "Minhas Tarefas" : projName;
+    document.querySelector(".c-sub").textContent =
+      `${counts.open} pendentes · ${counts.done} concluídas${counts.overdue ? ` · ${counts.overdue} atrasadas` : ""}`;
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.id === s.view));
+    const vis = window.visibleTasks();
+    let chip = "";
+    if (s.filter) chip = `<span class="chip-filter">${filterLabel(s.filter)}<button data-act="clear-filter">${icon("X", 13)}</button></span>`;
+    document.querySelector(".c-meta-dyn").innerHTML =
+      `${chip}<span><b>${vis.length}</b> ${vis.length === 1 ? "tarefa" : "tarefas"}</span>`;
+  }
+
+  function updateNotesHeader() {
+    const view = window.state.notesView || "active";
+    const notes = window.state.notes || [];
+    let n, label;
+    if (view === "archived") { n = notes.filter((x) => x.archivedAt).length; label = "no arquivo"; }
+    else if (view === "labels") { n = (window.state.labels || []).length; label = n === 1 ? "etiqueta" : "etiquetas"; }
+    else if (view === "trash") { n = null; label = null; }
+    else { n = notes.filter((x) => !x.archivedAt).length; label = n === 1 ? "nota" : "notas"; }
+    document.querySelector(".c-sub").textContent = (n === null) ? "Itens excluídos há mais de 7 dias são removidos automaticamente" : `${n} ${label}`;
+    document.querySelectorAll(".note-view-toggle button").forEach((b) => b.classList.toggle("active", b.dataset.mode === (window.state.notesViewMode === "list" ? "list" : "grid")));
+  }
+
+  function updateDiarioHeader() {
+    const n = (window.state.diaryEntries || []).length;
+    document.querySelector(".c-sub").textContent = `${n} ${n === 1 ? "entrada" : "entradas"}`;
+  }
+
+  function filterLabel(f) {
+    if (f === "atrasada") return "Atrasadas";
+    if (f.startsWith("prio:")) return "Prioridade: " + PRIORITY[f.slice(5)].label;
+    return STATUS[f] ? STATUS[f].label : f;
+  }
+
+  // ---------- BODY ----------
+  function bodyHTML() {
+    const s = window.state;
+    if (s.page === "notas") return window.Render.notasPageHTML();
+    if (s.page === "diario") return window.Render.diarioPageHTML();
+    const v = s.view;
+    if (v === "kanban") return kanbanHTML();
+    if (v === "calendar") return calendarHTML();
+    if (v === "chat") return chatFullScreenHTML();
+    return listHTML();
+  }
+
+  function chatFullScreenHTML() {
+    return `<div class="chat-fullscreen-placeholder"></div>`;
+  }
+
+  function taskCardHTML(t) {
+    const done = t.status === "concluido";
+    const flash = window.state.flashId === t.id ? " flash" : "";
+    return `
+      <div class="card${done ? " done" : ""}${flash}" data-act="open" data-id="${t.id}">
+        <button class="card-check${done ? " checked" : ""}" data-act="toggle" data-id="${t.id}" title="${done ? "Reabrir" : "Concluir"}">${icon("CheckSmall", 13)}</button>
+        <div class="card-main">
+          <div class="card-title">${U.esc(t.title)}</div>
+          ${t.description ? `<div class="card-desc">${U.esc(U.stripHtml(t.description))}</div>` : ""}
+          <div class="card-foot">
+            ${done ? U.statusBadge("concluido") : U.priorityBadge(t.priority)}
+            ${!done ? U.statusBadge(t.status) : ""}
+            ${U.duePill(t)}
+          </div>
+        </div>
+        <div class="card-side">
+          <span class="card-proj">${U.esc(U.projectName(t.project))}</span>
+          <div class="card-icons">${U.checklistMini(t.checklist)}${U.commentMini(t.comments)}</div>
+        </div>
+      </div>`;
+  }
+
+  function listHTML() {
+    const tasks = window.visibleTasks();
+    if (!tasks.length) return emptyHTML();
+    const groups = SECTIONS.map((sec) => ({ sec, items: tasks.filter((t) => U.liveSection(t) === sec.id) })).filter((g) => g.items.length);
+    groups.forEach((g) => {
+      g.items.sort((a, b) => {
+        const pr = PRIORITY[a.priority].rank - PRIORITY[b.priority].rank;
+        if (pr !== 0) return pr;
+        const da = a.due ? parseDue(a.due).getTime() : Infinity;
+        const db = b.due ? parseDue(b.due).getTime() : Infinity;
+        return da - db;
+      });
+    });
+    return `<div class="list-view">${groups.map((g) => `
+      <section class="section">
+        <div class="section-head">
+          <span class="section-bar" style="background:${g.sec.color}"></span>
+          <span class="section-title">${g.sec.title}</span>
+          <span class="section-count">${g.items.length}</span>
+          <span class="section-line"></span>
+        </div>
+        <div class="section-cards">${g.items.map(taskCardHTML).join("")}</div>
+      </section>`).join("")}</div>`;
+  }
+
+  function emptyHTML() {
+    return `<div class="empty"><div class="empty-ico">${icon("Search", 24)}</div>
+      <h3>Nenhuma tarefa encontrada</h3><p>Ajuste os filtros ou peça ao assistente para criar uma nova tarefa.</p></div>`;
+  }
+
+  // ---------- KANBAN ----------
+  function kanbanCardHTML(t) {
+    const flash = window.state.flashId === t.id ? " flash" : "";
+    return `
+      <div class="kcard${flash}" draggable="true" data-act="open" data-id="${t.id}">
+        <div class="kcard-top">${U.priorityBadge(t.priority)}</div>
+        <div class="kcard-title">${U.esc(t.title)}</div>
+        ${t.description ? `<div class="kcard-desc">${U.esc(U.stripHtml(t.description))}</div>` : ""}
+        <div class="kcard-foot">
+          ${U.duePill(t, true)}
+          <span class="card-proj">${U.esc(U.projectName(t.project))}</span>
+          <div class="kcard-icons">${U.checklistMini(t.checklist)}${U.commentMini(t.comments)}</div>
+        </div>
+      </div>`;
+  }
+
+  function kanbanHTML() {
+    const tasks = window.visibleTasks();
+    return `<div class="kanban">${COLUMNS.map((col) => {
+      const items = tasks.filter((t) => t.status === col.id);
+      return `<div class="kcol" data-col="${col.id}">
+        <div class="kcol-head">
+          <span class="kcol-dot" style="background:${col.dot}"></span>
+          <span class="kcol-name">${col.name}</span>
+          <span class="kcol-count">${items.length}</span>
+          <button class="kcol-add" data-act="add-task" title="Adicionar">${icon("Plus", 15)}</button>
+        </div>
+        <div class="kcol-body scroll">
+          ${items.length ? items.map(kanbanCardHTML).join("")
+            : `<div style="padding:18px 8px;text-align:center;color:var(--ink-4);font-size:12px;font-weight:600">Arraste tarefas para cá</div>`}
+        </div>
+      </div>`;
+    }).join("")}</div>`;
+  }
+
+  // ---------- CALENDAR ----------
+  function calendarHTML() {
+    const s = window.state;
+    const year = s.calYear, month = s.calMonth;
+    const first = new Date(year, month, 1);
+    const startDow = first.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysPrev = new Date(year, month, 0).getDate();
+    const tasks = window.visibleTasks();
+
+    const cells = [];
+    for (let i = 0; i < startDow; i++) cells.push({ day: daysPrev - startDow + 1 + i, dim: true, m: month - 1, y: month === 0 ? year - 1 : year });
+    for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, dim: false, m: month, y: year });
+    let extra = 1;
+    while (cells.length % 7 !== 0 || cells.length < 42) { cells.push({ day: extra++, dim: true, m: month + 1, y: month === 11 ? year + 1 : year }); }
+
+    const tasksOn = (y, m, d) => tasks.filter((t) => { if (!t.due) return false; const dt = parseDue(t.due); return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d; });
+    const isToday = (c) => !c.dim && c.y === TODAY.getFullYear() && c.m === TODAY.getMonth() && c.day === TODAY.getDate();
+    const dows = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const legend = (color, label) => `<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:3px;background:${color}"></span>${label}</span>`;
+
+    return `<div class="cal">
+      <div class="cal-head">
+        <div class="cal-month">${MONTHS[month].charAt(0).toUpperCase() + MONTHS[month].slice(1)} ${year}</div>
+        <div class="cal-nav">
+          <button class="cal-navbtn" data-act="cal-prev">${icon("ChevLeft", 16)}</button>
+          <button class="cal-navbtn" data-act="cal-next">${icon("ChevRight", 16)}</button>
+        </div>
+        <button class="cal-today" data-act="cal-today">Hoje</button>
+        <div style="margin-left:auto;display:flex;gap:14px;font-size:12px;font-weight:600;color:var(--ink-3)">
+          ${legend("var(--p-urgente)", "Urgente")}${legend("var(--p-alta)", "Alta")}${legend("var(--s-concluido)", "Concluído")}
+        </div>
+      </div>
+      <div class="cal-dows">${dows.map((d) => `<div class="cal-dow">${d}</div>`).join("")}</div>
+      <div class="cal-grid">${cells.map((c) => {
+        const items = c.dim ? [] : tasksOn(c.y, c.m, c.day);
+        return `<div class="cal-cell${c.dim ? " dim" : ""}">
+          <div class="cal-daynum${isToday(c) ? " today" : ""}">${c.day}</div>
+          ${items.slice(0, 3).map((t) => {
+            const done = t.status === "concluido";
+            const col = done ? STATUS.concluido.color : PRIORITY[t.priority].color;
+            const bg = done ? STATUS.concluido.bg : PRIORITY[t.priority].bg;
+            return `<div class="cal-ev" style="background:${bg};color:${col};border-left-color:${col}" data-act="open" data-id="${t.id}" title="${U.esc(t.title)}">${U.esc(t.title)}</div>`;
+          }).join("")}
+          ${items.length > 3 ? `<div style="font-size:10.5px;font-weight:700;color:var(--ink-3);padding-left:4px">+${items.length - 3} mais</div>` : ""}
+        </div>`;
+      }).join("")}</div>
+    </div>`;
+  }
+
+  // ---------- CHAT ----------
+  function chatHTML() {
+    return window.state.messages.map(bubbleHTML).join("") +
+      (window.state.typing ? `<div class="msg ai"><div class="msg-ava"><img src="${U.assistantAvatarUrl()}" alt=""></div><div class="bubble" style="padding:0"><div class="typing"><i></i><i></i><i></i></div></div></div>` : "");
+  }
+
+  function bubbleHTML(m) {
+    if (m.role === "user") {
+      return `<div class="msg user">${U.avatarHTML(TD.me, "msg-ava")}<div class="bubble">${U.esc(m.text)}</div></div>`;
+    }
+    return `<div class="msg ai">
+      <div class="msg-ava"><img src="${U.assistantAvatarUrl()}" alt=""></div>
+      <div class="bubble"><span>${m.text}</span>${m.card ? taskMiniHTML(m.card) : ""}${echoHTML(m.echo)}${m.action ? `<span class="b-action">${icon("Check", 13)}${U.esc(m.action)}</span>` : ""}</div>
+    </div>`;
+  }
+
+  function echoHTML(echo) {
+    if (!echo) return "";
+    if (echo.canUndo) return `<button class="b-undo" data-act="undo">${icon("Logout", 13)} desfazer</button>`;
+    if (echo.canRedo) return `<button class="b-undo" data-act="redo">${icon("Refresh", 13)} refazer</button>`;
+    return "";
+  }
+
+  function taskMiniHTML(task) {
+    const p = PRIORITY[task.priority];
+    return `<span class="b-task" data-act="open" data-id="${task.id}" style="cursor:pointer">
+      <span class="b-task-title"><span style="width:8px;height:8px;border-radius:3px;background:${p.color};flex-shrink:0"></span>${U.esc(task.title)}</span>
+      <span class="b-task-meta">
+        <span class="badge" style="color:${p.color};background:${p.bg}"><span class="bdot" style="background:${p.color}"></span>${p.label}</span>
+        ${task.due ? `<span class="meta-pill" style="font-size:11px">${icon("Calendar", 12)}${TD.fmtDueShort(task.due)}</span>` : ""}
+        <span class="card-proj">${U.esc(task.projectName || U.projectName(task.project))}</span>
+      </span>
+    </span>`;
+  }
+
+  function suggestHTML() {
+    if (window.state.messages.length > 3) return "";
+    return `<div class="chat-suggest-label">Experimente</div>
+      <div class="suggest-row">${SUGGESTIONS.map((s, i) =>
+        `<button class="suggest" data-act="suggest" data-i="${i}">${icon(s.icon, 13)}${U.esc(s.text.length > 32 ? s.text.slice(0, 30) + "…" : s.text)}</button>`).join("")}</div>`;
+  }
+
+  // ---------- HISTÓRICO DE CONVERSAS (drawer) ----------
+  function convRowHTML(c) {
+    const active = String(c.id) === String(window.state.activeConversationId);
+    const when = c.updatedAt ? TD.relTime(c.updatedAt) : "";
+    return `<div class="conv-item${active ? " active" : ""}">
+      <button class="conv-main" data-act="conv-open" data-id="${c.id}">
+        <span class="conv-ico">${icon("Comment", 15)}</span>
+        <span class="conv-text">
+          <span class="conv-title">${U.esc(c.title)}</span>
+          <span class="conv-meta">${c.count} ${c.count === 1 ? "mensagem" : "mensagens"}${when ? " · " + when : ""}</span>
+        </span>
+      </button>
+      <span class="conv-actions">
+        <button class="conv-act" data-act="conv-rename" data-id="${c.id}" title="Renomear">${icon("Pencil", 14)}</button>
+        <button class="conv-act" data-act="conv-archive" data-id="${c.id}" data-archived="${c.archived ? 1 : 0}" title="${c.archived ? "Restaurar" : "Arquivar"}">${icon(c.archived ? "Inbox" : "Archive", 14)}</button>
+      </span>
+    </div>`;
+  }
+
+  function conversationsHTML() {
+    const convs = window.state.conversations || [];
+    const active = convs.filter((c) => !c.archived);
+    const archived = convs.filter((c) => c.archived);
+    const section = (title, list) => list.length
+      ? `<div class="conv-section-title">${title}</div>${list.map(convRowHTML).join("")}` : "";
+    const empty = `<div class="conv-empty">Nenhuma conversa ainda.</div>`;
+    return `
+      <div class="conv-head">
+        <div class="conv-head-title">${icon("History", 16)} Conversas</div>
+        <button class="conv-new" data-act="new-chat">${icon("Plus", 15)} Nova</button>
+        <button class="conv-close" data-act="history-close" title="Fechar">${icon("X", 16)}</button>
+      </div>
+      <div class="conv-list scroll">
+        ${active.length || archived.length ? section("Ativas", active) + section("Arquivadas", archived) : empty}
+      </div>`;
+  }
+
+  // ---------- CONFIGURAÇÕES (modal) ----------
+  function settingsHTML() {
+    const prefs = window.state.prefs;
+    const pos = prefs.chatPosition || "side";
+    const base = window.__BASE__ || "";
+    const opt = (id, label, sub, ic) => `
+      <button class="set-opt${pos === id ? " on" : ""}" data-act="set-pos" data-pos="${id}">
+        <span class="set-opt-ic">${icon(ic, 18)}</span>
+        <span class="set-opt-tx"><span class="set-opt-label">${label}</span><span class="set-opt-sub">${sub}</span></span>
+        <span class="set-opt-check">${pos === id ? icon("Check", 16) : ""}</span>
+      </button>`;
+    const selectedAvatar = U.ASSISTANT_AVATARS.includes(prefs.assistantAvatar) ? prefs.assistantAvatar : "default";
+    return `
+    <div class="modal-overlay" data-act="settings-close">
+      <div class="set-modal" data-stop>
+        <div class="set-head">
+          <div class="set-title">${icon("Settings", 18)} Configurações</div>
+          <button class="modal-x" data-act="settings-close">${icon("X", 18)}</button>
+        </div>
+        <div class="set-body scroll">
+          <div class="set-block">
+            <div class="set-block-label">Posição da barra de comandos</div>
+            <div class="set-options">
+              ${opt("side", "Lateral", "Painel fixo à direita (padrão)", "Kanban")}
+              ${opt("bottom", "Inferior", "Barra embaixo, estilo ChatGPT", "List")}
+            </div>
+          </div>
+          <div class="set-block">
+            <div class="set-block-label">Tamanho</div>
+            <p class="set-hint">Arraste a borda da barra de comandos para ajustar. Para voltar ao padrão:</p>
+            <button class="set-reset" data-act="size-reset">${icon("Refresh", 15)} Restaurar tamanho padrão</button>
+          </div>
+          <div class="set-block">
+            <div class="set-block-label">Expediente</div>
+            <p class="set-hint">Horário usado pelo Diário de Atividades para fechar atividades em aberto no fim do dia e reabri-las no dia seguinte.</p>
+            <div class="set-workday">
+              <label>Início <input type="time" class="set-input set-time" data-field="workday-start" value="${U.esc(prefs.workdayStart || "09:00")}"></label>
+              <label>Fim <input type="time" class="set-input set-time" data-field="workday-end" value="${U.esc(prefs.workdayEnd || "18:00")}"></label>
+            </div>
+          </div>
+          <div class="set-block">
+            <div class="set-block-label">Assistente</div>
+            <p class="set-hint">Nome e avatar do assistente exibidos no chat e nos comentários de IA.</p>
+            <input type="text" class="set-input" data-act="set-assistant-name" placeholder="Assistente" maxlength="40" value="${U.esc(prefs.assistantName || "")}">
+            <div class="set-avatar-grid">
+              ${U.ASSISTANT_AVATARS.map((id) => `
+                <button class="set-avatar-opt${selectedAvatar === id ? " selected" : ""}" data-act="set-assistant-avatar" data-avatar="${id}" title="${id}">
+                  <img src="${base}/app/assets/avatars/${id}.svg" alt="">
+                </button>`).join("")}
+            </div>
+          </div>
+          <div class="set-block">
+            <div class="set-block-label">Perfil</div>
+            <p class="set-hint">Seu nome, foto e informações relevantes exibidos na barra lateral e nos comentários.</p>
+            <div class="set-profile-row">
+              ${U.avatarHTML(TD.me, "set-profile-ava")}
+              <div>
+                <button class="set-reset" data-act="profile-avatar-pick" type="button">${icon("Pencil", 14)} Alterar foto</button>
+                <input type="file" class="set-avatar-file" accept="image/jpeg,image/png,image/webp" hidden>
+              </div>
+            </div>
+            <input type="text" class="set-input" data-field="profile-name" placeholder="Seu nome" maxlength="255" value="${U.esc(TD.me.name || "")}">
+            <textarea class="set-input set-textarea" data-field="profile-bio" placeholder="Bio / informações relevantes" maxlength="1000">${U.esc(TD.me.bio || "")}</textarea>
+            <button class="set-reset" data-act="profile-save" type="button">${icon("Check", 15)} Salvar perfil</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  window.Render = { sidebarHTML, headerHTML, updateHeader, bodyHTML, chatHTML, suggestHTML, conversationsHTML, settingsHTML };
+})();
