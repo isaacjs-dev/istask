@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Note;
 use App\Models\User;
+use App\Notifications\ShareDeclinedNotification;
 use App\Support\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -40,6 +41,11 @@ class NoteCollaboratorController extends Controller
         $me = Workspace::user();
         abort_unless($me->id === $note->user_id || $me->id === $user->id, 403);
         $note->collaborators()->detach($user->id);
+
+        // Recusa/saída do próprio colaborador: avisar o dono da nota.
+        if ($me->id === $user->id && $me->id !== $note->user_id && $note->user) {
+            $note->user->notify(new ShareDeclinedNotification('note', $note->id, (string) $note->title, $me->name));
+        }
 
         return response()->json(['note' => $note->fresh()->toApiArray()]);
     }

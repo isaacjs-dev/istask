@@ -122,8 +122,21 @@ class TaskRepository
             'labels'             => $user->labels()->orderBy('name')->get()->map->toApiArray()->all(),
             'diaryEntries'       => $user->diaryEntries()->with(['task', 'project', 'attachments', 'histories'])->latest('started_at')->limit(120)->get()->map->toApiArray()->all(),
             'me'                 => $this->meFor($user),
+            'notifications'      => $this->notificationsPayload($user),
             'csrf'               => csrf_token(),
         ];
+    }
+
+    /** Avisos in-app não lidos (exceto lembretes de nota, que têm fluxo de toast próprio). @return array<int,array> */
+    public function notificationsPayload(User $user): array
+    {
+        return $user->unreadNotifications()->latest()->limit(50)->get()
+            ->reject(fn ($n) => ($n->data['kind'] ?? null) === 'note_reminder')
+            ->map(fn ($n) => [
+                'id'        => $n->id,
+                'data'      => $n->data,
+                'createdAt' => optional($n->created_at)->toIso8601String(),
+            ])->values()->all();
     }
 
     /** Áreas de Trabalho do usuário (próprias + compartilhadas). @return array<int,array> */
@@ -148,6 +161,8 @@ class TaskRepository
     /** Projetos acessíveis (próprios + em áreas/projetos compartilhados), com membros/permissão. @return array<int,array> */
     public function projectsPayload(User $user): array
     {
+        $wsIds = $this->accessibleWorkspaceIds($user);
+
         return Project::whereIn('id', $this->accessibleProjectIds($user))
             ->with(['members', 'workspace.members', 'user'])
             ->orderBy('position')->orderBy('id')->get()
@@ -159,6 +174,9 @@ class TaskRepository
                 'workspaceId' => $p->workspace_id ? (string) $p->workspace_id : null,
                 'isOwner'     => $p->user_id === $user->id,
                 'ownerName'   => optional($p->user)->name,
+                // Projeto compartilhado individualmente cuja área eu não acesso → vai para a
+                // área virtual "Projetos compartilhados" no front (sempre visível quando houver).
+                'sharedSolo'  => $p->user_id !== $user->id && (! $p->workspace_id || ! $wsIds->contains($p->workspace_id)),
                 'permission'  => Access::projectPermission($user, $p),
                 'members'     => $p->members->map(fn (User $u) => [
                     'id'         => (string) $u->id,

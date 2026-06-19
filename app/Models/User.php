@@ -93,6 +93,10 @@ class User extends Authenticatable
             'assistantAvatar' => 'default',
             'workdayStart' => '09:00',
             'workdayEnd' => '18:00',
+            'workspaceGrouping' => 'merged',
+            'notebookGrouping' => 'merged',
+            'activityRange' => 'day',
+            'teamActivityEnabled' => false,
         ];
 
         return array_merge($defaults, (array) ($this->preferences ?? []));

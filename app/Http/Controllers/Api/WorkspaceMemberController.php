@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Workspace as WorkspaceModel;
+use App\Notifications\ShareDeclinedNotification;
 use App\Support\TaskRepository;
 use App\Support\Workspace;
 use Illuminate\Http\Request;
@@ -52,6 +53,11 @@ class WorkspaceMemberController extends Controller
         $me = Workspace::user();
         abort_unless($me->id === $workspace->owner_id || $me->id === $user->id, 403);
         $workspace->members()->detach($user->id);
+
+        // Recusa/saída do próprio convidado: avisar o dono.
+        if ($me->id === $user->id && $me->id !== $workspace->owner_id && $workspace->owner) {
+            $workspace->owner->notify(new ShareDeclinedNotification('workspace', $workspace->id, $workspace->name, $me->name));
+        }
 
         return response()->json($this->payload($me));
     }

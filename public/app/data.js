@@ -173,6 +173,10 @@
       updateConversation: (id, payload) => req("PATCH", `/api/conversations/${id}`, payload),
       conversationMessages: (id) => req("GET", `/api/conversations/${id}/messages`),
       savePrefs: (prefs) => req("PUT", "/api/preferences", prefs),
+      // Avisos in-app (sino)
+      notifications: () => req("GET", "/api/notifications"),
+      markNotificationRead: (id) => req("POST", `/api/notifications/${id}/read`),
+      markAllNotificationsRead: () => req("POST", "/api/notifications/read-all"),
       updateProfile: (data) => req("PATCH", "/api/profile", data),
       uploadAvatar: (file) => upload("/api/profile/avatar", { avatar: file }),
       // --- Diário de Atividades / anexos ---

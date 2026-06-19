@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\User;
+use App\Notifications\ShareDeclinedNotification;
 use App\Support\TaskRepository;
 use App\Support\Workspace;
 use Illuminate\Http\Request;
@@ -43,6 +44,11 @@ class ProjectMemberController extends Controller
         $me = Workspace::user();
         abort_unless($me->id === $project->user_id || $me->id === $user->id, 403);
         $project->members()->detach($user->id);
+
+        // Recusa/saída do próprio convidado: avisar o dono.
+        if ($me->id === $user->id && $me->id !== $project->user_id && $project->user) {
+            $project->user->notify(new ShareDeclinedNotification('project', $project->id, $project->name, $me->name));
+        }
 
         return response()->json(['projects' => $this->repo->projectsPayload($me)]);
     }

@@ -6,6 +6,18 @@
   const icon = window.icon;
   const U = window.UI;
 
+  // Área virtual que reúne projetos compartilhados individualmente (área de origem inacessível).
+  const VIRTUAL_SHARED_WS = "shared-projects";
+  window.VIRTUAL_SHARED_WS = VIRTUAL_SHARED_WS;
+
+  function sharedSoloProjects() {
+    return ((window.state && window.state.projects) || []).filter((p) => p.sharedSolo);
+  }
+  function sharedSoloKeys() {
+    return new Set(sharedSoloProjects().map((p) => p.slug + "@" + (p.workspaceId != null ? p.workspaceId : "")));
+  }
+  window.sharedSoloKeys = sharedSoloKeys;
+
   const STATUS_FILTERS = [
     { id: "pendente", label: "Pendentes", icon: "Inbox", color: "var(--s-pendente)" },
     { id: "andamento", label: "Em andamento", icon: "Clock2", color: "var(--s-andamento)" },
@@ -34,12 +46,16 @@
     const sp = (window.state && window.state.projects) || [];
     if (sp.length) {
       const aw = window.state.activeWorkspaceId;
-      return sp.filter((p) => !aw || String(p.workspaceId) === String(aw)).map((p) => ({ id: p.slug, name: p.name, icon: p.icon }));
+      if (aw === VIRTUAL_SHARED_WS) {
+        return sharedSoloProjects().map((p) => ({ id: p.slug, name: p.name, icon: p.icon }));
+      }
+      return sp.filter((p) => !p.sharedSolo && (!aw || String(p.workspaceId) === String(aw))).map((p) => ({ id: p.slug, name: p.name, icon: p.icon }));
     }
     return PROJECTS.map((p) => ({ id: p.id, name: p.name, icon: null }));
   }
 
   function activeWorkspaceName() {
+    if (window.state.activeWorkspaceId === VIRTUAL_SHARED_WS) return "Projetos compartilhados";
     const ws = (window.state.workspaces || []).find((w) => String(w.id) === String(window.state.activeWorkspaceId));
     return ws ? ws.name : "Workspace";
   }
@@ -47,22 +63,49 @@
   // ---------- SIDEBAR ----------
   function sidebarHTML() {
     const tasks = window.state.tasks;
-    const projCount = (id) => id === "geral" ? tasks.length : tasks.filter((t) => t.project === id).length;
+    const activeWs = window.state.activeWorkspaceId;
+    const soloKeys = sharedSoloKeys();
+    const inSolo = (t) => soloKeys.has(t.project + "@" + (t.workspaceId != null ? t.workspaceId : ""));
+    const projCount = (id) => {
+      if (activeWs === VIRTUAL_SHARED_WS) return (id === "geral" ? tasks.filter(inSolo) : tasks.filter((t) => inSolo(t) && t.project === id)).length;
+      return id === "geral" ? tasks.length : tasks.filter((t) => t.project === id).length;
+    };
     const statusCount = (id) => id === "atrasada" ? tasks.filter((t) => TD.isOverdue(t)).length : tasks.filter((t) => t.status === id).length;
     const prioCount = (id) => tasks.filter((t) => t.priority === id && t.status !== "concluido").length;
     const af = window.state.filter, ap = window.state.project, page = window.state.page || "tarefas";
 
     const workspaces = window.state.workspaces || [];
-    const activeWs = window.state.activeWorkspaceId;
-    const wsGroup = workspaces.length ? `
-        <div class="sb-group sb-ws-group">
-          <div class="sb-group-title">Área de Trabalho <button class="sb-add" data-act="new-workspace" title="Nova área">${icon("Plus", 13)}</button></div>
-          ${workspaces.map((w) => `
+    const grouping = (window.state.prefs && window.state.prefs.workspaceGrouping) || "merged";
+    const hasSolo = sharedSoloProjects().length > 0;
+    const wsItemHTML = (w) => `
             <button class="sb-item sb-ws-item${String(activeWs) === String(w.id) ? " active" : ""}" data-act="workspace" data-id="${w.id}">
               <span class="sb-ico">${icon(w.icon || "Folder", 17)}</span>
               <span class="sb-item-label">${U.esc(w.name)}</span>
               ${w.isOwner === false ? `<span class="sb-ws-shared" title="Compartilhada por ${U.esc(w.ownerName || "")}">${icon("User", 12)}</span>` : ""}
-            </button>`).join("")}
+            </button>`;
+    const sharedWsItemHTML = `
+            <button class="sb-item sb-ws-item sb-ws-virtual${activeWs === VIRTUAL_SHARED_WS ? " active" : ""}" data-act="workspace" data-id="${VIRTUAL_SHARED_WS}">
+              <span class="sb-ico">${icon("Merge", 17)}</span>
+              <span class="sb-item-label">Projetos compartilhados</span>
+              <span class="sb-count">${sharedSoloProjects().length}</span>
+            </button>`;
+    let wsItems;
+    if (grouping === "separated") {
+      const mine = workspaces.filter((w) => w.isOwner !== false);
+      const shared = workspaces.filter((w) => w.isOwner === false);
+      wsItems = `
+          <div class="sb-ws-sub-title">Minhas áreas</div>
+          ${mine.map(wsItemHTML).join("")}
+          ${shared.length || hasSolo ? `<div class="sb-ws-sub-title">Compartilhadas comigo</div>` : ""}
+          ${shared.map(wsItemHTML).join("")}
+          ${hasSolo ? sharedWsItemHTML : ""}`;
+    } else {
+      wsItems = `${workspaces.map(wsItemHTML).join("")}${hasSolo ? sharedWsItemHTML : ""}`;
+    }
+    const wsGroup = workspaces.length ? `
+        <div class="sb-group sb-ws-group">
+          <div class="sb-group-title">Área de Trabalho <button class="sb-add" data-act="new-workspace" title="Nova área">${icon("Plus", 13)}</button></div>
+          ${wsItems}
           <button class="sb-item sb-ws-manage" data-act="manage-workspaces">
             <span class="sb-ico">${icon("Settings", 15)}</span>
             <span class="sb-item-label">Gerenciar áreas</span>
@@ -157,6 +200,11 @@
     return tarefasHeaderHTML();
   }
 
+  function bellHTML() {
+    const n = (window.state.notifications || []).length;
+    return `<button class="btn-ghost notif-bell" data-act="notifications" title="Avisos">${icon("Bell", 18)}${n ? `<span class="notif-badge">${n > 9 ? "9+" : n}</span>` : ""}</button>`;
+  }
+
   function tarefasHeaderHTML() {
     return `
       <div class="c-head-top">
@@ -171,7 +219,7 @@
             <span class="sb-ico">${icon("Search", 16)}</span>
             <input id="searchInput" placeholder="Buscar tarefas…" />
           </div>
-          <button class="btn-ghost">${icon("Bell", 18)}</button>
+          ${bellHTML()}
           <button class="btn-primary" data-act="add-task">${icon("Plus", 16)} Nova tarefa</button>
         </div>
       </div>
@@ -205,6 +253,7 @@
               <span class="material-symbols-outlined">view_list</span>
             </button>
           </div>
+          ${bellHTML()}
           <button class="btn-primary" data-note-act="new">${icon("Plus", 16)} Nova nota</button>
         </div>
       </div>`;
@@ -224,6 +273,7 @@
             <span class="sb-ico">${icon("Search", 16)}</span>
             <input id="searchInput" placeholder="Buscar no diário…" />
           </div>
+          ${bellHTML()}
           <button class="btn-primary" data-diary-act="new">${icon("Plus", 16)} Nova entrada</button>
         </div>
       </div>`;
@@ -524,6 +574,11 @@
         <span class="set-opt-tx"><span class="set-opt-label">${label}</span><span class="set-opt-sub">${sub}</span></span>
         <span class="set-opt-check">${pos === id ? icon("Check", 16) : ""}</span>
       </button>`;
+    const groupOpt = (act, value, current, label, sub) => `
+      <button class="set-opt${current === value ? " on" : ""}" data-act="${act}" data-value="${value}">
+        <span class="set-opt-tx"><span class="set-opt-label">${label}</span><span class="set-opt-sub">${sub}</span></span>
+        <span class="set-opt-check">${current === value ? icon("Check", 16) : ""}</span>
+      </button>`;
     const selectedAvatar = U.ASSISTANT_AVATARS.includes(prefs.assistantAvatar) ? prefs.assistantAvatar : "default";
     return `
     <div class="modal-overlay" data-act="settings-close">
@@ -551,6 +606,20 @@
             <div class="set-workday">
               <label>Início <input type="time" class="set-input set-time" data-field="workday-start" value="${U.esc(prefs.workdayStart || "09:00")}"></label>
               <label>Fim <input type="time" class="set-input set-time" data-field="workday-end" value="${U.esc(prefs.workdayEnd || "18:00")}"></label>
+            </div>
+          </div>
+          <div class="set-block">
+            <div class="set-block-label">Organização de áreas e cadernos</div>
+            <p class="set-hint">Separe os itens compartilhados em grupos próprios ou exiba tudo junto, com um ícone indicando os que vieram de outra pessoa.</p>
+            <div class="set-sub-label">Áreas de trabalho</div>
+            <div class="set-options">
+              ${groupOpt("set-ws-grouping", "merged", prefs.workspaceGrouping || "merged", "Tudo junto", "Compartilhadas com um ícone")}
+              ${groupOpt("set-ws-grouping", "separated", prefs.workspaceGrouping || "merged", "Separar", "Locais e compartilhadas em grupos")}
+            </div>
+            <div class="set-sub-label">Cadernos (Notas)</div>
+            <div class="set-options">
+              ${groupOpt("set-nb-grouping", "merged", prefs.notebookGrouping || "merged", "Tudo junto", "Compartilhados com um ícone")}
+              ${groupOpt("set-nb-grouping", "separated", prefs.notebookGrouping || "merged", "Separar", "Meus e compartilhados em grupos")}
             </div>
           </div>
           <div class="set-block">
@@ -583,5 +652,32 @@
     </div>`;
   }
 
-  window.Render = { sidebarHTML, headerHTML, updateHeader, bodyHTML, chatHTML, suggestHTML, conversationsHTML, settingsHTML };
+  // ---------- AVISOS (sino) ----------
+  function notificationsHTML() {
+    const list = window.state.notifications || [];
+    const items = list.length
+      ? list.map((n) => `
+          <div class="notif-item">
+            <span class="notif-ico">${icon("Bell", 15)}</span>
+            <div class="notif-body">
+              <div class="notif-msg">${U.esc((n.data && n.data.message) || "Aviso")}</div>
+              <div class="notif-time">${TD.relTime(n.createdAt)}</div>
+            </div>
+            <button class="notif-read" data-act="notif-read" data-id="${n.id}" title="Marcar como lido">${icon("Check", 14)}</button>
+          </div>`).join("")
+      : `<div class="notif-empty">Sem avisos novos.</div>`;
+    return `
+      <div class="modal-overlay notif-overlay" data-act="notif-close">
+        <div class="notif-panel" data-stop>
+          <div class="notif-head">
+            <span class="notif-head-title">${icon("Bell", 16)} Avisos</span>
+            ${list.length ? `<button class="notif-readall" data-act="notif-read-all">Marcar tudo</button>` : ""}
+            <button class="modal-x" data-act="notif-close">${icon("X", 16)}</button>
+          </div>
+          <div class="notif-list scroll">${items}</div>
+        </div>
+      </div>`;
+  }
+
+  window.Render = { sidebarHTML, headerHTML, updateHeader, bodyHTML, chatHTML, suggestHTML, conversationsHTML, settingsHTML, notificationsHTML };
 })();

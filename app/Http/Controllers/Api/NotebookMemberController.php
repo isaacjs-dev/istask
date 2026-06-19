@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Notebook;
 use App\Models\User;
+use App\Notifications\ShareDeclinedNotification;
 use App\Support\TaskRepository;
 use App\Support\Workspace;
 use Illuminate\Http\Request;
@@ -48,6 +49,12 @@ class NotebookMemberController extends Controller
         $me = Workspace::user();
         abort_unless($this->isOwner($notebook, $me) || $me->id === $user->id, 403);
         $notebook->members()->detach($user->id);
+
+        // Recusa/saída do próprio convidado: avisar o dono da área.
+        $owner = optional($notebook->workspace)->owner;
+        if ($me->id === $user->id && ! $this->isOwner($notebook, $me) && $owner) {
+            $owner->notify(new ShareDeclinedNotification('notebook', $notebook->id, $notebook->name, $me->name));
+        }
 
         return response()->json(['notebooks' => $this->repo->notebooksPayload($me)]);
     }

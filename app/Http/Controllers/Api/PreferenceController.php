@@ -22,6 +22,10 @@ class PreferenceController extends Controller
             'workdayEnd'      => ['sometimes', 'string', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/'],
             'notesViewMode'   => 'sometimes|in:grid,list',
             'activeWorkspaceId' => 'sometimes|nullable|integer',
+            'workspaceGrouping' => 'sometimes|in:merged,separated',
+            'notebookGrouping'  => 'sometimes|in:merged,separated',
+            'activityRange'     => 'sometimes|in:day,week,month',
+            'teamActivityEnabled' => 'sometimes|boolean',
         ]);
 
         $user = Workspace::user();

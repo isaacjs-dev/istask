@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\NoteController;
 use App\Http\Controllers\Api\NoteItemController;
 use App\Http\Controllers\Api\NotebookController;
 use App\Http\Controllers\Api\NotebookMemberController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectMemberController;
 use App\Http\Controllers\Api\WorkspaceMemberController;
 use App\Http\Controllers\Api\PreferenceController;
@@ -124,6 +125,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/conversations', [ConversationController::class, 'store']);
         Route::patch('/conversations/{conversation}', [ConversationController::class, 'update']);
         Route::get('/conversations/{conversation}/messages', [ConversationController::class, 'messages']);
+
+        // Avisos in-app (sino)
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
+        Route::post('/notifications/{id}/read', [NotificationController::class, 'read']);
 
         // Preferências de UI
         Route::put('/preferences', [PreferenceController::class, 'update']);
