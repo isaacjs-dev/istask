@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AppController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\AiController;
 use App\Http\Controllers\Api\AttachmentController;
 use App\Http\Controllers\Api\ConversationController;
@@ -45,13 +46,25 @@ Route::middleware('auth')->group(function () {
     Route::prefix('api')->group(function () {
         Route::get('/bootstrap', fn (TaskRepository $repo) => response()->json($repo->bootstrap()));
 
+        Route::get('/tasks/reminders/due', [TaskController::class, 'remindersDue']);
         Route::post('/tasks', [TaskController::class, 'store']);
         Route::put('/tasks/{task}', [TaskController::class, 'sync']);
         Route::delete('/tasks/{task}', [TaskController::class, 'destroy']);
         Route::post('/tasks/{task}/toggle', [TaskController::class, 'toggle']);
         Route::post('/tasks/{task}/move', [TaskController::class, 'move']);
+        Route::post('/tasks/{task}/archive', [TaskController::class, 'archive']);
+        Route::post('/tasks/{task}/duplicate', [TaskController::class, 'duplicate']);
+        Route::patch('/tasks/{task}/comments/{comment}', [TaskController::class, 'updateComment']);
+        Route::delete('/tasks/{task}/comments/{comment}', [TaskController::class, 'destroyComment']);
+        Route::post('/tasks/{task}/links', [TaskController::class, 'addLink']);
+        Route::delete('/tasks/{task}/links/{link}', [TaskController::class, 'removeLink']);
+        Route::post('/tasks/{task}/relations', [TaskController::class, 'addRelation']);
+        Route::delete('/tasks/{task}/relations/{relation}', [TaskController::class, 'removeRelation']);
 
         Route::post('/ai/command', [AiController::class, 'command']);
+
+        // Registro de atividades / timeline (e visão de time via ?workspace=)
+        Route::get('/activities', [ActivityController::class, 'index']);
 
         // Áreas de Trabalho
         Route::post('/workspaces/reorder', [WorkspaceController::class, 'reorder']);
@@ -66,6 +79,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/notebooks/reorder', [NotebookController::class, 'reorder']);
         Route::post('/notebooks', [NotebookController::class, 'store']);
         Route::patch('/notebooks/{notebook}', [NotebookController::class, 'update']);
+        Route::post('/notebooks/{notebook}/cover', [NotebookController::class, 'uploadCover']);
         Route::delete('/notebooks/{notebook}', [NotebookController::class, 'destroy']);
         Route::post('/notebooks/{notebook}/members', [NotebookMemberController::class, 'store']);
         Route::delete('/notebooks/{notebook}/members/{user}', [NotebookMemberController::class, 'destroy']);

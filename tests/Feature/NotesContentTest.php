@@ -110,7 +110,7 @@ class NotesContentTest extends TestCase
         $this->assertSame([0, 1, 2], array_column($items, 'position'));
     }
 
-    public function test_convert_checklist_to_text_joins_with_checkboxes(): void
+    public function test_convert_checklist_to_text_wraps_items_in_paragraphs(): void
     {
         $user = User::factory()->create();
         $this->actingAs($user);
@@ -121,9 +121,27 @@ class NotesContentTest extends TestCase
         $res = $this->postJson("/api/notes/{$note->id}/convert", ['type' => 'text']);
         $res->assertOk();
         $this->assertSame('text', $res->json('note.type'));
-        $this->assertSame("[x] Feito\n[ ] A fazer", $res->json('note.body'));
+        // Cada item vira um parágrafo HTML (renderiza com quebras); concluído fica tachado.
+        $this->assertSame('<p><s>Feito</s></p><p>A fazer</p>', $res->json('note.body'));
         $this->assertCount(0, $res->json('note.items'));
         $this->assertDatabaseMissing('note_items', ['note_id' => $note->id]);
+    }
+
+    public function test_convert_text_to_checklist_strips_html_tags(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        // Corpo de texto rico (HTML): tags NÃO podem vazar para o texto dos itens.
+        $note = $this->note($user, ['type' => 'text', 'body' => '<p><strong>Comprar pão</strong></p><p>Leite</p><ul><li>Ovos</li></ul>']);
+
+        $res = $this->postJson("/api/notes/{$note->id}/convert", ['type' => 'checklist']);
+        $res->assertOk();
+        $this->assertSame('checklist', $res->json('note.type'));
+        $texts = array_column($res->json('note.items'), 'text');
+        $this->assertSame(['Comprar pão', 'Leite', 'Ovos'], $texts);
+        foreach ($texts as $t) {
+            $this->assertStringNotContainsString('<', $t);
+        }
     }
 
     public function test_convert_rejects_invalid_type_and_is_noop_when_same(): void

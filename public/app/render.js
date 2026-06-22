@@ -24,12 +24,14 @@
     { id: "aguardando", label: "Aguardando terceiros", icon: "Hourglass", color: "var(--s-aguardando)" },
     { id: "concluido", label: "Concluídas", icon: "Check", color: "var(--s-concluido)" },
     { id: "atrasada", label: "Atrasadas", icon: "Alert", color: "var(--p-urgente)" },
+    { id: "arquivada", label: "Arquivadas", icon: "Archive", color: "var(--ink-3)" },
   ];
   const PROJ_ICON = { geral: "Folder", sistemas: "Settings", processos: "Refresh", integracoes: "Merge", comunicacao: "Comment" };
 
   const PAGES = [
     { id: "tarefas", label: "Tarefas", icon: "Checklist" },
     { id: "notas", label: "Notas", icon: "NotebookPen" },
+    { id: "atividades", label: "Atividades", icon: "History" },
     { id: "diario", label: "Diário", icon: "BookOpen" },
   ];
 
@@ -63,15 +65,18 @@
   // ---------- SIDEBAR ----------
   function sidebarHTML() {
     const tasks = window.state.tasks;
+    const live = tasks.filter((t) => !t.archivedAt); // arquivadas não contam nas demais visões
     const activeWs = window.state.activeWorkspaceId;
     const soloKeys = sharedSoloKeys();
     const inSolo = (t) => soloKeys.has(t.project + "@" + (t.workspaceId != null ? t.workspaceId : ""));
     const projCount = (id) => {
-      if (activeWs === VIRTUAL_SHARED_WS) return (id === "geral" ? tasks.filter(inSolo) : tasks.filter((t) => inSolo(t) && t.project === id)).length;
-      return id === "geral" ? tasks.length : tasks.filter((t) => t.project === id).length;
+      if (activeWs === VIRTUAL_SHARED_WS) return (id === "geral" ? live.filter(inSolo) : live.filter((t) => inSolo(t) && t.project === id)).length;
+      return id === "geral" ? live.length : live.filter((t) => t.project === id).length;
     };
-    const statusCount = (id) => id === "atrasada" ? tasks.filter((t) => TD.isOverdue(t)).length : tasks.filter((t) => t.status === id).length;
-    const prioCount = (id) => tasks.filter((t) => t.priority === id && t.status !== "concluido").length;
+    const statusCount = (id) => id === "arquivada" ? tasks.filter((t) => t.archivedAt).length
+      : id === "atrasada" ? live.filter((t) => TD.isOverdue(t)).length
+      : live.filter((t) => t.status === id).length;
+    const prioCount = (id) => live.filter((t) => t.priority === id && t.status !== "concluido").length;
     const af = window.state.filter, ap = window.state.project, page = window.state.page || "tarefas";
 
     const workspaces = window.state.workspaces || [];
@@ -169,7 +174,7 @@
         ${tarefasGroups}
         <div class="sb-group">
           <div class="sb-group-title">Sistema</div>
-          <button class="sb-item" data-act="settings">
+          <button class="sb-item${page === "config" ? " active" : ""}" data-act="settings">
             <span class="sb-ico">${icon("Settings", 17)}</span>
             <span class="sb-item-label">Configurações</span>
           </button>
@@ -196,8 +201,42 @@
   function headerHTML() {
     const p = window.state.page;
     if (p === "notas") return notesHeaderHTML();
+    if (p === "atividades") return atividadesHeaderHTML();
     if (p === "diario") return diarioHeaderHTML();
+    if (p === "config") return configHeaderHTML();
     return tarefasHeaderHTML();
+  }
+
+  function configHeaderHTML() {
+    return `
+      <div class="c-head-top">
+        <button class="c-menu" data-act="nav" title="Menu" aria-label="Abrir menu">${icon("Menu", 20)}</button>
+        <div class="c-title-wrap">
+          <div class="c-bread"><span class="c-bread-proj">Preferências do sistema</span></div>
+          <h1 class="c-title">Configurações</h1>
+          <div class="c-sub">Aparência, comportamento, assistente e conta.</div>
+        </div>
+        <div class="c-actions">${bellHTML()}</div>
+      </div>`;
+  }
+
+  function atividadesHeaderHTML() {
+    return `
+      <div class="c-head-top">
+        <button class="c-menu" data-act="nav" title="Menu" aria-label="Abrir menu">${icon("Menu", 20)}</button>
+        <div class="c-title-wrap">
+          <div class="c-bread"><span class="c-bread-proj">Registro de atividades</span></div>
+          <h1 class="c-title">Atividades</h1>
+          <div class="c-sub"></div>
+        </div>
+        <div class="c-actions">
+          <div class="search">
+            <span class="sb-ico">${icon("Search", 16)}</span>
+            <input id="searchInput" placeholder="Buscar atividades…" />
+          </div>
+          ${bellHTML()}
+        </div>
+      </div>`;
   }
 
   function bellHTML() {
@@ -284,8 +323,15 @@
     if (wsEl) wsEl.textContent = activeWorkspaceName();
     const p = window.state.page;
     if (p === "notas") return updateNotesHeader();
+    if (p === "atividades") return updateActivitiesHeader();
     if (p === "diario") return updateDiarioHeader();
+    if (p === "config") return; // header estático
     return updateTarefasHeader();
+  }
+
+  function updateActivitiesHeader() {
+    const sub = document.querySelector(".c-sub");
+    if (sub) sub.textContent = "Cada ação registrada nas suas tarefas, separada por dia.";
   }
 
   function updateTarefasHeader() {
@@ -335,7 +381,9 @@
   function bodyHTML() {
     const s = window.state;
     if (s.page === "notas") return window.Render.notasPageHTML();
+    if (s.page === "atividades") return window.Render.activitiesPageHTML();
     if (s.page === "diario") return window.Render.diarioPageHTML();
+    if (s.page === "config") return configPageHTML();
     const v = s.view;
     if (v === "kanban") return kanbanHTML();
     if (v === "calendar") return calendarHTML();
@@ -351,7 +399,7 @@
     const done = t.status === "concluido";
     const flash = window.state.flashId === t.id ? " flash" : "";
     return `
-      <div class="card${done ? " done" : ""}${flash}" data-act="open" data-id="${t.id}">
+      <div class="card${done ? " done" : ""}${flash}" data-act="open" data-id="${t.id}" tabindex="0" role="button" aria-label="Abrir tarefa: ${U.esc(t.title)}">
         <button class="card-check${done ? " checked" : ""}" data-act="toggle" data-id="${t.id}" title="${done ? "Reabrir" : "Concluir"}">${icon("CheckSmall", 13)}</button>
         <div class="card-main">
           <div class="card-title">${U.esc(t.title)}</div>
@@ -361,10 +409,11 @@
             ${!done ? U.statusBadge(t.status) : ""}
             ${U.duePill(t)}
           </div>
+          ${U.labelChips(t.labels)}
         </div>
         <div class="card-side">
           <span class="card-proj">${U.esc(U.projectName(t.project))}</span>
-          <div class="card-icons">${U.checklistMini(t.checklist)}${U.commentMini(t.comments)}</div>
+          <div class="card-icons">${U.recurMini(t)}${U.remindMini(t)}${U.checklistMini(t.checklist)}${U.commentMini(t.comments)}</div>
         </div>
       </div>`;
   }
@@ -403,14 +452,15 @@
   function kanbanCardHTML(t) {
     const flash = window.state.flashId === t.id ? " flash" : "";
     return `
-      <div class="kcard${flash}" draggable="true" data-act="open" data-id="${t.id}">
+      <div class="kcard${flash}" draggable="true" data-act="open" data-id="${t.id}" tabindex="0" role="button" aria-label="Abrir tarefa: ${U.esc(t.title)}">
         <div class="kcard-top">${U.priorityBadge(t.priority)}</div>
         <div class="kcard-title">${U.esc(t.title)}</div>
         ${t.description ? `<div class="kcard-desc">${U.esc(U.stripHtml(t.description))}</div>` : ""}
+        ${U.labelChips(t.labels)}
         <div class="kcard-foot">
           ${U.duePill(t, true)}
           <span class="card-proj">${U.esc(U.projectName(t.project))}</span>
-          <div class="kcard-icons">${U.checklistMini(t.checklist)}${U.commentMini(t.comments)}</div>
+          <div class="kcard-icons">${U.recurMini(t)}${U.remindMini(t)}${U.checklistMini(t.checklist)}${U.commentMini(t.comments)}</div>
         </div>
       </div>`;
   }
@@ -563,93 +613,157 @@
       </div>`;
   }
 
-  // ---------- CONFIGURAÇÕES (modal) ----------
-  function settingsHTML() {
+  // ---------- CONFIGURAÇÕES (página completa) ----------
+  const CONFIG_CATS = [
+    { id: "aparencia", label: "Aparência", icon: "Sparkles" },
+    { id: "geral", label: "Geral", icon: "Settings" },
+    { id: "assistente", label: "Assistente", icon: "Comment" },
+    { id: "conta", label: "Conta", icon: "User" },
+  ];
+
+  const THEME_OPTS = [
+    { id: "claro", label: "Claro", sub: "Padrão", bg: "#f6f7fb", surface: "#ffffff", accent: "#4f46e5", ink: "#1c1d29", line: "#eaeaf0" },
+    { id: "sepia", label: "Sépia", sub: "Claro quente", bg: "#f3ead9", surface: "#fffaf1", accent: "#c0641b", ink: "#36291a", line: "#e8dcc6" },
+    { id: "escuro", label: "Escuro", sub: "Dark mode", bg: "#15161c", surface: "#23252f", accent: "#6d63ff", ink: "#eceef5", line: "#2c2e39" },
+    { id: "escuro-suave", label: "Escuro suave", sub: "Dark quente", bg: "#1b1a18", surface: "#242220", accent: "#7c74ff", ink: "#ece8e1", line: "#36332f" },
+  ];
+
+  function themeCardHTML(t, current) {
+    const on = current === t.id;
+    return `
+      <button class="cfg-theme${on ? " on" : ""}" data-act="set-theme" data-theme="${t.id}" aria-pressed="${on}" title="${t.label}">
+        <span class="cfg-theme-prev" style="background:${t.bg};border-color:${t.line}">
+          <span class="cfg-theme-card" style="background:${t.surface};border-color:${t.line}">
+            <span class="cfg-theme-dot" style="background:${t.accent}"></span>
+            <span class="cfg-theme-lines"><i style="background:${t.ink}"></i><i style="background:${t.ink};opacity:.45"></i></span>
+          </span>
+        </span>
+        <span class="cfg-theme-meta">
+          <span class="cfg-theme-name">${t.label}</span>
+          <span class="cfg-theme-sub">${t.sub}</span>
+        </span>
+        <span class="cfg-theme-check">${on ? icon("Check", 16) : ""}</span>
+      </button>`;
+  }
+
+  function configPageHTML() {
     const prefs = window.state.prefs;
-    const pos = prefs.chatPosition || "side";
+    const section = window.state.configSection || "aparencia";
     const base = window.__BASE__ || "";
+    const pos = prefs.chatPosition || "side";
+    const theme = THEME_OPTS.some((t) => t.id === prefs.theme) ? prefs.theme : "claro";
     const opt = (id, label, sub, ic) => `
-      <button class="set-opt${pos === id ? " on" : ""}" data-act="set-pos" data-pos="${id}">
+      <button class="set-opt${pos === id ? " on" : ""}" data-act="set-pos" data-pos="${id}" aria-pressed="${pos === id}">
         <span class="set-opt-ic">${icon(ic, 18)}</span>
         <span class="set-opt-tx"><span class="set-opt-label">${label}</span><span class="set-opt-sub">${sub}</span></span>
         <span class="set-opt-check">${pos === id ? icon("Check", 16) : ""}</span>
       </button>`;
     const groupOpt = (act, value, current, label, sub) => `
-      <button class="set-opt${current === value ? " on" : ""}" data-act="${act}" data-value="${value}">
+      <button class="set-opt${current === value ? " on" : ""}" data-act="${act}" data-value="${value}" aria-pressed="${current === value}">
         <span class="set-opt-tx"><span class="set-opt-label">${label}</span><span class="set-opt-sub">${sub}</span></span>
         <span class="set-opt-check">${current === value ? icon("Check", 16) : ""}</span>
       </button>`;
     const selectedAvatar = U.ASSISTANT_AVATARS.includes(prefs.assistantAvatar) ? prefs.assistantAvatar : "default";
+
+    const sections = {
+      aparencia: `
+        <div class="set-block">
+          <div class="set-block-label">Tema</div>
+          <p class="set-hint">Escolha a aparência do aplicativo. A preferência fica salva e é aplicada nas próximas sessões.</p>
+          <div class="cfg-theme-grid">${THEME_OPTS.map((t) => themeCardHTML(t, theme)).join("")}</div>
+        </div>
+        <div class="set-block">
+          <div class="set-block-label">Posição da barra de comandos</div>
+          <div class="set-options">
+            ${opt("side", "Lateral", "Painel fixo à direita (padrão)", "Kanban")}
+            ${opt("bottom", "Inferior", "Barra embaixo, estilo ChatGPT", "List")}
+          </div>
+        </div>
+        <div class="set-block">
+          <div class="set-block-label">Tamanho da barra</div>
+          <p class="set-hint">Arraste a borda da barra de comandos para ajustar. Para voltar ao padrão:</p>
+          <button class="set-reset" data-act="size-reset">${icon("Refresh", 15)} Restaurar tamanho padrão</button>
+        </div>`,
+      geral: `
+        <div class="set-block">
+          <div class="set-block-label">Expediente</div>
+          <p class="set-hint">Horário usado pelo Diário de Atividades para fechar atividades em aberto no fim do dia e reabri-las no dia seguinte.</p>
+          <div class="set-workday">
+            <label>Início <input type="time" class="set-input set-time" data-field="workday-start" value="${U.esc(prefs.workdayStart || "09:00")}"></label>
+            <label>Fim <input type="time" class="set-input set-time" data-field="workday-end" value="${U.esc(prefs.workdayEnd || "18:00")}"></label>
+          </div>
+        </div>
+        <div class="set-block">
+          <div class="set-block-label">Organização de áreas e cadernos</div>
+          <p class="set-hint">Separe os itens compartilhados em grupos próprios ou exiba tudo junto, com um ícone indicando os que vieram de outra pessoa.</p>
+          <div class="set-sub-label">Áreas de trabalho</div>
+          <div class="set-options">
+            ${groupOpt("set-ws-grouping", "merged", prefs.workspaceGrouping || "merged", "Tudo junto", "Compartilhadas com um ícone")}
+            ${groupOpt("set-ws-grouping", "separated", prefs.workspaceGrouping || "merged", "Separar", "Locais e compartilhadas em grupos")}
+          </div>
+          <div class="set-sub-label">Cadernos (Notas)</div>
+          <div class="set-options">
+            ${groupOpt("set-nb-grouping", "merged", prefs.notebookGrouping || "merged", "Tudo junto", "Compartilhados com um ícone")}
+            ${groupOpt("set-nb-grouping", "separated", prefs.notebookGrouping || "merged", "Separar", "Meus e compartilhados em grupos")}
+          </div>
+          <div class="set-sub-label">Atividades do time</div>
+          <div class="set-options">
+            ${groupOpt("set-team", "off", prefs.teamActivityEnabled ? "on" : "off", "Desativado", "Ver apenas minhas atividades")}
+            ${groupOpt("set-team", "on", prefs.teamActivityEnabled ? "on" : "off", "Ativado", "Ver atividades por membro do time")}
+          </div>
+        </div>
+        <div class="set-block">
+          <div class="set-block-label">Registro de atividades com IA</div>
+          <p class="set-hint">Usa o assistente para variar a redação dos lançamentos do diário em linguagem natural. Se a IA estiver indisponível, usa textos padrão. Pode acrescentar uma breve espera ao criar/concluir tarefas.</p>
+          <div class="set-options">
+            ${groupOpt("set-ai-log", "on", (prefs.aiActivityLog === false ? "off" : "on"), "Ativado", "Redação natural variada (padrão)")}
+            ${groupOpt("set-ai-log", "off", (prefs.aiActivityLog === false ? "off" : "on"), "Desativado", "Textos padrão, instantâneo")}
+          </div>
+        </div>`,
+      assistente: `
+        <div class="set-block">
+          <div class="set-block-label">Assistente</div>
+          <p class="set-hint">Nome e avatar do assistente exibidos no chat e nos comentários de IA.</p>
+          <input type="text" class="set-input" data-act="set-assistant-name" placeholder="Assistente" maxlength="40" value="${U.esc(prefs.assistantName || "")}">
+          <div class="set-avatar-grid">
+            ${U.ASSISTANT_AVATARS.map((id) => `
+              <button class="set-avatar-opt${selectedAvatar === id ? " selected" : ""}" data-act="set-assistant-avatar" data-avatar="${id}" title="${id}">
+                <img src="${base}/app/assets/avatars/${id}.svg" alt="">
+              </button>`).join("")}
+          </div>
+        </div>`,
+      conta: `
+        <div class="set-block">
+          <div class="set-block-label">Perfil</div>
+          <p class="set-hint">Seu nome, foto e informações relevantes exibidos na barra lateral e nos comentários.</p>
+          <div class="set-profile-row">
+            ${U.avatarHTML(TD.me, "set-profile-ava")}
+            <div>
+              <button class="set-reset" data-act="profile-avatar-pick" type="button">${icon("Pencil", 14)} Alterar foto</button>
+              <input type="file" class="set-avatar-file" accept="image/jpeg,image/png,image/webp" hidden>
+            </div>
+          </div>
+          <input type="text" class="set-input" data-field="profile-name" placeholder="Seu nome" maxlength="255" value="${U.esc(TD.me.name || "")}">
+          <textarea class="set-input set-textarea" data-field="profile-bio" placeholder="Bio / informações relevantes" maxlength="1000">${U.esc(TD.me.bio || "")}</textarea>
+          <button class="set-reset" data-act="profile-save" type="button">${icon("Check", 15)} Salvar perfil</button>
+        </div>
+        <div class="set-block">
+          <div class="set-block-label">Sessão</div>
+          <button class="set-reset set-logout" data-act="logout" type="button">${icon("Logout", 15)} Sair da conta</button>
+        </div>`,
+    };
+
+    const nav = CONFIG_CATS.map((c) => `
+      <button class="cfg-nav-item${section === c.id ? " active" : ""}" data-act="cfg-nav" data-section="${c.id}">
+        <span class="sb-ico">${icon(c.icon, 17)}</span>
+        <span>${c.label}</span>
+      </button>`).join("");
+
     return `
-    <div class="modal-overlay" data-act="settings-close">
-      <div class="set-modal" data-stop>
-        <div class="set-head">
-          <div class="set-title">${icon("Settings", 18)} Configurações</div>
-          <button class="modal-x" data-act="settings-close">${icon("X", 18)}</button>
-        </div>
-        <div class="set-body scroll">
-          <div class="set-block">
-            <div class="set-block-label">Posição da barra de comandos</div>
-            <div class="set-options">
-              ${opt("side", "Lateral", "Painel fixo à direita (padrão)", "Kanban")}
-              ${opt("bottom", "Inferior", "Barra embaixo, estilo ChatGPT", "List")}
-            </div>
-          </div>
-          <div class="set-block">
-            <div class="set-block-label">Tamanho</div>
-            <p class="set-hint">Arraste a borda da barra de comandos para ajustar. Para voltar ao padrão:</p>
-            <button class="set-reset" data-act="size-reset">${icon("Refresh", 15)} Restaurar tamanho padrão</button>
-          </div>
-          <div class="set-block">
-            <div class="set-block-label">Expediente</div>
-            <p class="set-hint">Horário usado pelo Diário de Atividades para fechar atividades em aberto no fim do dia e reabri-las no dia seguinte.</p>
-            <div class="set-workday">
-              <label>Início <input type="time" class="set-input set-time" data-field="workday-start" value="${U.esc(prefs.workdayStart || "09:00")}"></label>
-              <label>Fim <input type="time" class="set-input set-time" data-field="workday-end" value="${U.esc(prefs.workdayEnd || "18:00")}"></label>
-            </div>
-          </div>
-          <div class="set-block">
-            <div class="set-block-label">Organização de áreas e cadernos</div>
-            <p class="set-hint">Separe os itens compartilhados em grupos próprios ou exiba tudo junto, com um ícone indicando os que vieram de outra pessoa.</p>
-            <div class="set-sub-label">Áreas de trabalho</div>
-            <div class="set-options">
-              ${groupOpt("set-ws-grouping", "merged", prefs.workspaceGrouping || "merged", "Tudo junto", "Compartilhadas com um ícone")}
-              ${groupOpt("set-ws-grouping", "separated", prefs.workspaceGrouping || "merged", "Separar", "Locais e compartilhadas em grupos")}
-            </div>
-            <div class="set-sub-label">Cadernos (Notas)</div>
-            <div class="set-options">
-              ${groupOpt("set-nb-grouping", "merged", prefs.notebookGrouping || "merged", "Tudo junto", "Compartilhados com um ícone")}
-              ${groupOpt("set-nb-grouping", "separated", prefs.notebookGrouping || "merged", "Separar", "Meus e compartilhados em grupos")}
-            </div>
-          </div>
-          <div class="set-block">
-            <div class="set-block-label">Assistente</div>
-            <p class="set-hint">Nome e avatar do assistente exibidos no chat e nos comentários de IA.</p>
-            <input type="text" class="set-input" data-act="set-assistant-name" placeholder="Assistente" maxlength="40" value="${U.esc(prefs.assistantName || "")}">
-            <div class="set-avatar-grid">
-              ${U.ASSISTANT_AVATARS.map((id) => `
-                <button class="set-avatar-opt${selectedAvatar === id ? " selected" : ""}" data-act="set-assistant-avatar" data-avatar="${id}" title="${id}">
-                  <img src="${base}/app/assets/avatars/${id}.svg" alt="">
-                </button>`).join("")}
-            </div>
-          </div>
-          <div class="set-block">
-            <div class="set-block-label">Perfil</div>
-            <p class="set-hint">Seu nome, foto e informações relevantes exibidos na barra lateral e nos comentários.</p>
-            <div class="set-profile-row">
-              ${U.avatarHTML(TD.me, "set-profile-ava")}
-              <div>
-                <button class="set-reset" data-act="profile-avatar-pick" type="button">${icon("Pencil", 14)} Alterar foto</button>
-                <input type="file" class="set-avatar-file" accept="image/jpeg,image/png,image/webp" hidden>
-              </div>
-            </div>
-            <input type="text" class="set-input" data-field="profile-name" placeholder="Seu nome" maxlength="255" value="${U.esc(TD.me.name || "")}">
-            <textarea class="set-input set-textarea" data-field="profile-bio" placeholder="Bio / informações relevantes" maxlength="1000">${U.esc(TD.me.bio || "")}</textarea>
-            <button class="set-reset" data-act="profile-save" type="button">${icon("Check", 15)} Salvar perfil</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
+      <div class="cfg-page">
+        <aside class="cfg-nav" role="tablist" aria-label="Categorias de configuração">${nav}</aside>
+        <div class="cfg-content">${sections[section] || sections.aparencia}</div>
+      </div>`;
   }
 
   // ---------- AVISOS (sino) ----------
@@ -679,5 +793,5 @@
       </div>`;
   }
 
-  window.Render = { sidebarHTML, headerHTML, updateHeader, bodyHTML, chatHTML, suggestHTML, conversationsHTML, settingsHTML, notificationsHTML };
+  window.Render = { sidebarHTML, headerHTML, updateHeader, bodyHTML, chatHTML, suggestHTML, conversationsHTML, configPageHTML, notificationsHTML };
 })();

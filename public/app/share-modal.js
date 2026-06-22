@@ -147,12 +147,14 @@
   function transfer(userId) {
     const m = (entity().members || []).find((x) => String(x.id) === String(userId));
     if (!cfg().transfer || !m) return;
-    if (!window.confirm(`Transferir a propriedade desta ${cfg().label} para ${m.name}? Você passará a ser editor.`)) return;
-    cfg().transfer(ctx.id, userId).then((res) => {
-      applyRes(res);
-      refresh();
-      window.App.toast("Propriedade transferida");
-    }).catch((err) => window.App.toast((err.data && err.data.message) || "Não foi possível transferir."));
+    window.Modals.confirm({ title: "Transferir propriedade", message: `Transferir a propriedade desta ${cfg().label} para ${m.name}? Você passará a ser editor.`, okText: "Transferir" }).then((ok) => {
+      if (!ok) return;
+      cfg().transfer(ctx.id, userId).then((res) => {
+        applyRes(res);
+        refresh();
+        window.App.toast("Propriedade transferida");
+      }).catch((err) => window.App.toast((err.data && err.data.message) || "Não foi possível transferir."));
+    });
   }
 
   window.openShareModal = open;

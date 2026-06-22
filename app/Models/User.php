@@ -85,6 +85,7 @@ class User extends Authenticatable
     public function prefs(): array
     {
         $defaults = [
+            'theme' => 'claro',
             'chatPosition' => 'side',
             'chatWidth' => 372,
             'chatHeight' => 320,
@@ -97,6 +98,7 @@ class User extends Authenticatable
             'notebookGrouping' => 'merged',
             'activityRange' => 'day',
             'teamActivityEnabled' => false,
+            'aiActivityLog' => true,
         ];
 
         return array_merge($defaults, (array) ($this->preferences ?? []));

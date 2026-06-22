@@ -120,23 +120,31 @@ class NotesAndDiaryTest extends TestCase
 
     public function test_completing_task_closes_existing_open_diary_entry_instead_of_duplicating(): void
     {
-        [$user, $project] = $this->userWithProject();
-        $this->actingAs($user);
+        // Congela o tempo dentro do expediente para o teste não depender da hora real:
+        // fora do expediente, o DiaryService divide o período em aberto (comportamento correto),
+        // o que tornava este teste instável quando rodado após as 18h.
+        \Illuminate\Support\Carbon::setTestNow('2026-06-15 14:00:00');
+        try {
+            [$user, $project] = $this->userWithProject();
+            $this->actingAs($user);
 
-        $task = Task::create(['project_id' => $project->id, 'title' => 'Levantamento de requisitos']);
-        $open = $user->diaryEntries()->create([
-            'task_id'     => $task->id,
-            'started_at'  => now()->subHour(),
-            'description' => 'Levantamento de requisitos',
-        ]);
+            $task = Task::create(['project_id' => $project->id, 'title' => 'Levantamento de requisitos']);
+            $open = $user->diaryEntries()->create([
+                'task_id'     => $task->id,
+                'started_at'  => now()->subHour(),
+                'description' => 'Levantamento de requisitos',
+            ]);
 
-        $res = $this->postJson("/api/tasks/{$task->id}/toggle");
-        $res->assertOk();
+            $res = $this->postJson("/api/tasks/{$task->id}/toggle");
+            $res->assertOk();
 
-        $entries = DiaryEntry::where('task_id', $task->id)->get();
-        $this->assertCount(1, $entries);
-        $this->assertSame($open->id, $entries->first()->id);
-        $this->assertNotNull($entries->first()->ended_at);
+            $entries = DiaryEntry::where('task_id', $task->id)->get();
+            $this->assertCount(1, $entries);
+            $this->assertSame($open->id, $entries->first()->id);
+            $this->assertNotNull($entries->first()->ended_at);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
     }
 
     public function test_chat_update_note_command_produces_diff_and_undo(): void

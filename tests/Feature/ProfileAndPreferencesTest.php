@@ -81,6 +81,44 @@ class ProfileAndPreferencesTest extends TestCase
         $this->assertNull($user->fresh()->avatar_path);
     }
 
+    public function test_theme_preference_persists_and_appears_in_bootstrap(): void
+    {
+        [$user] = $this->userWithProject();
+        $this->actingAs($user);
+
+        // padrão = claro
+        $this->assertSame('claro', $this->getJson('/api/bootstrap')->json('prefs.theme'));
+
+        $res = $this->putJson('/api/preferences', ['theme' => 'escuro']);
+        $res->assertOk();
+        $this->assertSame('escuro', $res->json('prefs.theme'));
+
+        $this->assertSame('escuro', $this->getJson('/api/bootstrap')->json('prefs.theme'));
+    }
+
+    public function test_ai_activity_log_preference_persists(): void
+    {
+        [$user] = $this->userWithProject();
+        $this->actingAs($user);
+
+        // padrão = ligado
+        $this->assertTrue($this->getJson('/api/bootstrap')->json('prefs.aiActivityLog'));
+
+        $res = $this->putJson('/api/preferences', ['aiActivityLog' => false]);
+        $res->assertOk();
+        $this->assertFalse($res->json('prefs.aiActivityLog'));
+        $this->assertFalse($this->getJson('/api/bootstrap')->json('prefs.aiActivityLog'));
+    }
+
+    public function test_invalid_theme_is_rejected(): void
+    {
+        [$user] = $this->userWithProject();
+        $this->actingAs($user);
+
+        $res = $this->putJson('/api/preferences', ['theme' => 'neon'], ['Accept' => 'application/json']);
+        $res->assertStatus(422);
+    }
+
     public function test_preferences_update_persists_assistant_customization_and_appears_in_bootstrap(): void
     {
         [$user] = $this->userWithProject();

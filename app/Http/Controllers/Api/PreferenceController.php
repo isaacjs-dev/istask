@@ -12,6 +12,7 @@ class PreferenceController extends Controller
     public function update(Request $request)
     {
         $data = $request->validate([
+            'theme'           => 'sometimes|in:claro,sepia,escuro,escuro-suave',
             'chatPosition'    => 'sometimes|in:side,bottom',
             'chatWidth'       => 'sometimes|integer|min:300|max:640',
             'chatHeight'      => 'sometimes|integer|min:200|max:720',
@@ -26,6 +27,7 @@ class PreferenceController extends Controller
             'notebookGrouping'  => 'sometimes|in:merged,separated',
             'activityRange'     => 'sometimes|in:day,week,month',
             'teamActivityEnabled' => 'sometimes|boolean',
+            'aiActivityLog'     => 'sometimes|boolean',
         ]);
 
         $user = Workspace::user();

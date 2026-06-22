@@ -13,6 +13,56 @@
     d.innerHTML = html || "";
     return (d.textContent || "").trim();
   }
+  /**
+   * Sanitiza HTML para exibição segura via innerHTML (allowlist). Cobre a saída do
+   * editor rico (TipTap: StarterKit + Underline/Highlight/Link/TaskList) e o corpo
+   * legado. Tags não permitidas e não perigosas são "desembrulhadas" (preserva o
+   * texto); script/style/iframe/etc. são removidas por completo. Defesa em
+   * profundidade — o body também é sanitizado no servidor (HtmlSanitizer::clean).
+   */
+  const SANITIZE_ALLOW = {
+    P: [], BR: [], DIV: [], SPAN: [],
+    STRONG: [], B: [], EM: [], I: [], U: [], S: [], MARK: [], CODE: [], PRE: [],
+    H1: [], H2: [], H3: [], H4: [], H5: [], H6: [],
+    UL: ["data-type"], OL: ["data-type", "start"], LI: ["data-type", "data-checked"],
+    BLOCKQUOTE: [], HR: [], A: ["href"], LABEL: [], INPUT: ["type", "checked"],
+  };
+  const SANITIZE_DROP = new Set(["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "FORM", "LINK", "META", "BASE", "HEAD", "TITLE"]);
+  function sanitizeHtml(html) {
+    if (html == null || html === "") return "";
+    const doc = new DOMParser().parseFromString(String(html), "text/html");
+    const clean = (node) => {
+      Array.from(node.childNodes).forEach((child) => {
+        if (child.nodeType === 8) { child.remove(); return; }      // comentário
+        if (child.nodeType !== 1) return;                          // texto: mantém
+        const tag = child.tagName;
+        if (SANITIZE_DROP.has(tag)) { child.remove(); return; }
+        if (!Object.prototype.hasOwnProperty.call(SANITIZE_ALLOW, tag)) {
+          // tag não permitida (não perigosa): desembrulha, preserva o conteúdo
+          clean(child);
+          const parent = child.parentNode;
+          while (child.firstChild) parent.insertBefore(child.firstChild, child);
+          parent.removeChild(child);
+          return;
+        }
+        if (tag === "INPUT" && (child.getAttribute("type") || "").toLowerCase() !== "checkbox") {
+          child.remove(); return;
+        }
+        const allowed = SANITIZE_ALLOW[tag];
+        Array.from(child.attributes).forEach((attr) => {
+          const name = attr.name.toLowerCase();
+          if (allowed.indexOf(name) === -1) { child.removeAttribute(attr.name); return; }
+          if (name === "href" && /^\s*(javascript|vbscript|data):/i.test(attr.value || "")) {
+            child.removeAttribute(attr.name);
+          }
+        });
+        if (tag === "INPUT") child.setAttribute("disabled", "");   // checkbox apenas leitura na exibição
+        clean(child);
+      });
+    };
+    clean(doc.body);
+    return doc.body.innerHTML;
+  }
 
   function priorityBadge(id) {
     const p = PRIORITY[id]; if (!p) return "";
@@ -36,6 +86,21 @@
   function commentMini(cm) {
     if (!cm || !cm.length) return "";
     return `<span class="card-ic-item" title="Comentários">${icon("Comment", 14.5)}${cm.length}</span>`;
+  }
+  const RECUR_LABEL = { daily: "Diária", weekly: "Semanal", monthly: "Mensal" };
+  function recurMini(t) {
+    if (!t.recurrence || t.recurrence === "none") return "";
+    return `<span class="card-ic-item" title="Recorrência: ${RECUR_LABEL[t.recurrence] || ""}">${icon("Refresh", 14)}</span>`;
+  }
+  function remindMini(t) {
+    if (!t.remindAt) return "";
+    const over = new Date(t.remindAt) <= TD.TODAY && t.status !== "concluido";
+    return `<span class="card-ic-item${over ? " overdue" : ""}" title="Lembrete${over ? " vencido" : ""}">${icon("Bell", 14)}</span>`;
+  }
+  function labelChips(labels) {
+    if (!labels || !labels.length) return "";
+    const shown = labels.slice(0, 4);
+    return `<div class="task-labels">${shown.map((l) => `<span class="task-label-chip">${icon("Tag", 10)}${esc(l.name)}</span>`).join("")}${labels.length > 4 ? `<span class="task-label-chip more">+${labels.length - 4}</span>` : ""}</div>`;
   }
 
   // slug -> nome do projeto (state.projects vem do boot/REST)
@@ -80,6 +145,48 @@
     return `<div class="${cssClass}" style="background:${(person && person.color) || "var(--accent)"}">${esc((person && person.initials) || "")}</div>`;
   }
 
+  // --- responsável: pessoas com acesso à tarefa (sugestões do combobox) ---
+  // Une dono+membros da Área (achada pelo workspaceId do projeto) + dono+membros do
+  // próprio projeto + o usuário atual. Deduplicado por nome (resolução é por nome).
+  function taskPeople(projectSlug) {
+    const st = window.state || {};
+    const proj = (st.projects || []).find((p) => p.slug === projectSlug || String(p.id) === String(projectSlug));
+    const ws = proj ? (st.workspaces || []).find((w) => String(w.id) === String(proj.workspaceId)) : null;
+    const out = [];
+    const seen = new Set();
+    const add = (name, avatarUrl) => {
+      const n = (name == null ? "" : String(name)).trim();
+      if (!n) return;
+      const k = n.toLowerCase();
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push({ name: n, initials: initialsOf(n), avatarUrl: avatarUrl || null });
+    };
+    if (ws) { add(ws.ownerName, ws.ownerAvatarUrl); (ws.members || []).forEach((m) => add(m.name, m.avatarUrl)); }
+    if (proj) { add(proj.ownerName, proj.ownerAvatarUrl); (proj.members || []).forEach((m) => add(m.name, m.avatarUrl)); }
+    const me = (window.TaskData && window.TaskData.me) || null;
+    if (me) add(me.name, me.avatarUrl);
+    return out;
+  }
+  // <datalist> nativo com as pessoas-com-acesso: dá autocomplete e mantém texto livre.
+  function peopleDatalistHTML(id, people) {
+    return `<datalist id="${id}">${(people || []).map((p) => `<option value="${esc(p.name)}"></option>`).join("")}</datalist>`;
+  }
+  // resolve um nome contra a lista; mostra avatar (vinculado), iniciais (externo) ou vazio.
+  // "Você" (convenção do app) e o próprio nome do usuário resolvem para o usuário atual.
+  function respAvatarHTML(name, people, cssClass) {
+    const n = (name == null ? "" : String(name)).trim();
+    if (!n) return `<div class="${cssClass} resp-empty" title="Sem responsável"></div>`;
+    const me = (window.TaskData && window.TaskData.me) || null;
+    const low = n.toLowerCase();
+    if (me && (low === "você" || low === "voce" || (me.name && low === me.name.toLowerCase()))) {
+      return avatarHTML(me, cssClass);
+    }
+    const person = (people || []).find((p) => p.name.toLowerCase() === low);
+    if (person) return avatarHTML(person, cssClass);
+    return `<div class="${cssClass} resp-external" title="Responsável externo (sem acesso à tarefa)">${esc(initialsOf(n))}</div>`;
+  }
+
   // --- personalização do assistente de IA ---
   const ASSISTANT_AVATARS = ["default", "robot", "assistant", "person1", "person2", "person3", "comet", "owl", "bolt"];
   function assistantAvatarUrl() {
@@ -93,5 +200,5 @@
     return (prefs.assistantName && prefs.assistantName.trim()) || "Assistente";
   }
 
-  window.UI = { esc, stripHtml, priorityBadge, statusBadge, duePill, checklistMini, commentMini, projectName, liveSection, sectionTitle, initialsOf, avatarHTML, ASSISTANT_AVATARS, assistantAvatarUrl, assistantName };
+  window.UI = { esc, stripHtml, sanitizeHtml, priorityBadge, statusBadge, duePill, checklistMini, commentMini, recurMini, remindMini, labelChips, projectName, liveSection, sectionTitle, initialsOf, avatarHTML, taskPeople, peopleDatalistHTML, respAvatarHTML, ASSISTANT_AVATARS, assistantAvatarUrl, assistantName };
 })();

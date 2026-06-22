@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use App\Support\Access;
 use App\Support\Initials;
-use App\Support\Workspace;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -103,6 +102,12 @@ class Note extends Model
 
     public function toApiArray(): array
     {
+        $me = auth()->user();
+        $isOwner = $this->user_id === optional($me)->id;
+        // Nota compartilhada individualmente cujo caderno eu não acesso → caderno virtual
+        // "Notas compartilhadas" no front (sempre presente quando houver ≥1).
+        $sharedSolo = $me && ! $isOwner && Access::notebookPermission($me, $this->notebook) === null;
+
         return [
             'id'         => (string) $this->id,
             'title'      => $this->title,
@@ -127,7 +132,8 @@ class Note extends Model
                 'initials'   => Initials::of($u->name),
                 'permission' => $u->pivot->permission,
             ])->all(),
-            'isOwner'    => $this->user_id === optional(Workspace::user())->id,
+            'isOwner'    => $isOwner,
+            'sharedSolo' => $sharedSolo,
             'ownerName'  => optional($this->user)->name,
             'permission' => ($me = auth()->user()) ? Access::notePermission($me, $this) : null,
             'updatedAt'  => optional($this->updated_at)->toIso8601String(),

@@ -69,6 +69,41 @@ class GeminiService
      * Gatilho B — corrige apenas ortografia/acentuação de um texto livre,
      * sem reescrever estilo nem mudar o sentido. Em falha, devolve o original.
      */
+    /**
+     * Reescreve, com naturalidade e variação, o registro de uma atividade de
+     * tarefa em PT-BR (1ª pessoa). Devolve texto PLANO (sem HTML) ou null em
+     * falha/timeout — o chamador faz o fallback para o template determinístico
+     * e escapa o texto antes de persistir. Timeout curto: roda no caminho da
+     * requisição (recomenda-se fila em produção).
+     *
+     * @param array{title?:string,duration?:string} $ctx
+     */
+    public function narrate(string $event, array $ctx): ?string
+    {
+        if (! $this->enabled()) {
+            return null;
+        }
+        $title = trim((string) ($ctx['title'] ?? '')) ?: 'sem título';
+        $dur = trim((string) ($ctx['duration'] ?? ''));
+        $base = match ($event) {
+            'created'   => "Criei a tarefa \"{$title}\".",
+            'started'   => "Comecei a trabalhar na tarefa \"{$title}\".",
+            'completed' => "Concluí a tarefa \"{$title}\"." . ($dur !== '' ? " Tempo trabalhado: {$dur}." : ''),
+            'reopened'  => "Reabri a tarefa \"{$title}\".",
+            default     => null,
+        };
+        if ($base === null) {
+            return null;
+        }
+        $system = 'Você escreve UMA frase curta de registro de atividade em português do Brasil, '
+            . 'em PRIMEIRA PESSOA (como se eu mesmo anotasse meu dia), natural e com leve variação. '
+            . 'Preserve o sentido e os dados (título exatamente como veio e o tempo, se houver). '
+            . 'Responda só com a frase, sem aspas, sem markdown e sem HTML.';
+        $out = $this->generate($system, "Reescreva: {$base}", false, 6, 0.7);
+
+        return is_string($out) && trim($out) !== '' ? trim($out) : null;
+    }
+
     public function correctSpelling(?string $text): ?string
     {
         $text = (string) $text;
@@ -114,18 +149,18 @@ class GeminiService
     }
 
     /** Chamada genérica ao generateContent. $json=true força saída JSON. */
-    private function generate(string $system, string $user, bool $json): mixed
+    private function generate(string $system, string $user, bool $json, int $timeout = 30, float $temperature = 0): mixed
     {
         try {
             $cfg = config('services.gemini');
             $url = rtrim($cfg['base_url'], '/') . '/models/' . $cfg['model'] . ':generateContent';
 
-            $generationConfig = ['temperature' => 0];
+            $generationConfig = ['temperature' => $temperature];
             if ($json) {
                 $generationConfig['responseMimeType'] = 'application/json';
             }
 
-            $resp = Http::timeout(30)
+            $resp = Http::timeout($timeout)
                 ->withHeaders(['x-goog-api-key' => $cfg['key'], 'content-type' => 'application/json'])
                 ->post($url, [
                     'system_instruction' => ['parts' => [['text' => $system]]],

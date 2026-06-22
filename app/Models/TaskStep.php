@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class TaskStep extends Model
 {
     protected $fillable = [
-        'task_id', 'title', 'status', 'due_date', 'position',
+        'task_id', 'title', 'status', 'assignee', 'priority', 'due_date', 'position',
     ];
 
     protected function casts(): array

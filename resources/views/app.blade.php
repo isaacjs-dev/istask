@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+@php($theme = in_array(($boot['prefs']['theme'] ?? 'claro'), ['claro', 'sepia', 'escuro', 'escuro-suave'], true) ? ($boot['prefs']['theme'] ?? 'claro') : 'claro')
+<html lang="pt-BR" data-theme="{{ $theme }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -26,6 +27,7 @@
   <script src="{{ asset('app/data.js') }}"></script>
   <script src="{{ asset('app/icons-v.js') }}"></script>
   <script src="{{ asset('app/ui.js') }}"></script>
+  <script src="{{ asset('app/ui-modal.js') }}"></script>
   <script src="{{ asset('app/render.js') }}"></script>
   <script src="{{ asset('app/notes-page.js') }}"></script>
   <script src="{{ asset('app/notes-modals.js') }}"></script>
@@ -35,14 +37,34 @@
   <script src="{{ asset('app/notes-reminder.js') }}"></script>
   <script src="{{ asset('app/notes-collab.js') }}"></script>
   <script src="{{ asset('app/notes-export.js') }}"></script>
+  {{-- Editor rico das notas (TipTap via ESM CDN, sem build); degrada para textarea se indisponível --}}
+  <script type="module">
+    const imp = (u) => import(u).then((m) => m.default || m);
+    Promise.all([
+      import("https://esm.sh/@tiptap/core@2"),
+      imp("https://esm.sh/@tiptap/starter-kit@2"),
+      imp("https://esm.sh/@tiptap/extension-underline@2"),
+      imp("https://esm.sh/@tiptap/extension-link@2"),
+      imp("https://esm.sh/@tiptap/extension-highlight@2"),
+      imp("https://esm.sh/@tiptap/extension-task-list@2"),
+      imp("https://esm.sh/@tiptap/extension-task-item@2"),
+      imp("https://esm.sh/@tiptap/extension-placeholder@2"),
+    ]).then(([core, StarterKit, Underline, Link, Highlight, TaskList, TaskItem, Placeholder]) => {
+      window.TipTap = { Editor: core.Editor, StarterKit, Underline, Link, Highlight, TaskList, TaskItem, Placeholder };
+      window.dispatchEvent(new Event("tiptap-ready"));
+    }).catch((e) => { console.warn("TipTap indisponível, usando editor simples.", e); });
+  </script>
+  <script src="{{ asset('app/notes-editor.js') }}"></script>
   {{-- OCR client-side: Tesseract via CDN (sem build) + wrapper window.OCR --}}
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
   <script src="{{ asset('app/notes-ocr.js') }}"></script>
   <script src="{{ asset('app/diary-page.js') }}"></script>
+  <script src="{{ asset('app/activities-page.js') }}"></script>
   <script src="{{ asset('app/projects-modal.js') }}"></script>
   <script src="{{ asset('app/workspaces-modal.js') }}"></script>
   <script src="{{ asset('app/share-modal.js') }}"></script>
   <script src="{{ asset('app/modal-v.js') }}"></script>
+  <script src="{{ asset('app/quick-edit.js') }}"></script>
   <script src="{{ asset('app/main.js') }}"></script>
 </body>
 </html>

@@ -9,6 +9,7 @@ use App\Models\Notebook;
 use App\Notifications\NoteReminderDue;
 use App\Services\Commands\ActionRecorder;
 use App\Support\Access;
+use App\Support\HtmlSanitizer;
 use App\Support\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -40,7 +41,7 @@ class NoteController extends Controller
             'pattern'     => $this->patternRule(),
             'notebook_id' => 'sometimes|integer',
         ]);
-        $data['body'] = $data['body'] ?? '';
+        $data['body'] = HtmlSanitizer::clean($data['body'] ?? '');
 
         $notebookId = $data['notebook_id'] ?? null;
         if ($notebookId) {
@@ -86,6 +87,9 @@ class NoteController extends Controller
             'color'   => $this->colorRule(),
             'pattern' => $this->patternRule(),
         ]);
+        if (array_key_exists('body', $data)) {
+            $data['body'] = HtmlSanitizer::clean($data['body']);
+        }
         $before = $note->only(['title', 'body', 'tags', 'color']);
         $note->fill($data)->save();
         $this->recorder->record(
@@ -180,20 +184,29 @@ class NoteController extends Controller
         $data = $request->validate(['type' => 'required|in:text,checklist']);
 
         if ($data['type'] === 'checklist' && $note->type !== 'checklist') {
-            $lines = preg_split('/\r\n|\r|\n/', (string) $note->body);
+            // Converte o corpo HTML em linhas de texto limpas (sem tags) p/ os itens.
+            $text = preg_replace('#</(p|div|li|h[1-6]|blockquote|tr)\s*>#i', "\n", (string) $note->body);
+            $text = preg_replace('#<br\s*/?>#i', "\n", (string) $text);
+            $text = html_entity_decode(strip_tags((string) $text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $lines = preg_split('/\r\n|\r|\n/', $text);
             $position = 0;
             foreach ($lines as $line) {
-                $text = trim($line);
-                if ($text === '') {
+                $itemText = trim($line);
+                if ($itemText === '') {
                     continue;
                 }
-                $note->items()->create(['text' => $text, 'position' => $position++]);
+                $note->items()->create(['text' => $itemText, 'position' => $position++]);
             }
             $note->type = 'checklist';
             $note->body = '';
             $note->save();
         } elseif ($data['type'] === 'text' && $note->type === 'checklist') {
-            $body = $note->items->map(fn ($i) => ($i->done ? '[x] ' : '[ ] ') . $i->text)->implode("\n");
+            // Cada item vira um parágrafo HTML (texto escapado); item concluído fica tachado.
+            $body = $note->items->map(function ($i) {
+                $text = e($i->text);
+
+                return '<p>' . ($i->done ? "<s>{$text}</s>" : $text) . '</p>';
+            })->implode('');
             $note->items()->delete();
             $note->type = 'text';
             $note->body = $body;

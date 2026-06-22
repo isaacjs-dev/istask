@@ -117,8 +117,18 @@
       deleteTask: (id) => req("DELETE", `/api/tasks/${id}`),
       toggleTask: (id) => req("POST", `/api/tasks/${id}/toggle`),
       moveTask: (id, status) => req("POST", `/api/tasks/${id}/move`, { status }),
+      archiveTask: (id) => req("POST", `/api/tasks/${id}/archive`),
+      duplicateTask: (id) => req("POST", `/api/tasks/${id}/duplicate`),
+      updateTaskComment: (taskId, commentId, text) => req("PATCH", `/api/tasks/${taskId}/comments/${commentId}`, { text }),
+      deleteTaskComment: (taskId, commentId) => req("DELETE", `/api/tasks/${taskId}/comments/${commentId}`),
+      addTaskLink: (taskId, url, label) => req("POST", `/api/tasks/${taskId}/links`, { url, label: label || null }),
+      removeTaskLink: (taskId, linkId) => req("DELETE", `/api/tasks/${taskId}/links/${linkId}`),
+      addTaskRelation: (taskId, relatedId, type) => req("POST", `/api/tasks/${taskId}/relations`, { related_id: +relatedId, type }),
+      removeTaskRelation: (taskId, relationId) => req("DELETE", `/api/tasks/${taskId}/relations/${relationId}`),
+      tasksRemindersDue: () => req("GET", "/api/tasks/reminders/due"),
       command: (text, conversationId) => req("POST", "/api/ai/command", { text, conversation_id: conversationId ? +conversationId : null }),
       bootstrap: () => req("GET", "/api/bootstrap"),
+      activities: (params) => req("GET", "/api/activities" + (params && Object.keys(params).length ? ("?" + new URLSearchParams(params).toString()) : "")),
       createProject: (name, workspaceId) => req("POST", "/api/projects", workspaceId ? { name, workspace_id: workspaceId } : { name }),
       updateProject: (id, payload) => req("PATCH", `/api/projects/${id}`, payload),
       deleteProject: (id) => req("DELETE", `/api/projects/${id}`),
@@ -140,6 +150,7 @@
       // Cadernos
       createNotebook: (name, workspaceId, color) => req("POST", "/api/notebooks", { name, workspace_id: workspaceId, color: color || null }),
       updateNotebook: (id, payload) => req("PATCH", `/api/notebooks/${id}`, payload),
+      uploadNotebookCover: (id, file) => upload(`/api/notebooks/${id}/cover`, { cover: file }),
       deleteNotebook: (id) => req("DELETE", `/api/notebooks/${id}`),
       reorderNotebooks: (ids) => req("POST", "/api/notebooks/reorder", { ids }),
       moveNote: (id, notebookId) => req("POST", `/api/notes/${id}/move`, { notebook_id: notebookId }),
@@ -181,32 +192,39 @@
       uploadAvatar: (file) => upload("/api/profile/avatar", { avatar: file }),
       // --- Diário de Atividades / anexos ---
       diaryList: () => req("GET", "/api/diary"),
-      uploadAttachment: (attachableType, attachableId, file, origin) =>
+      uploadAttachment: (attachableType, attachableId, file, origin, onProgress) =>
         upload("/api/attachments", Object.assign(
           { attachable_type: attachableType, attachable_id: attachableId, file },
           origin ? { origin } : {}
-        )),
+        ), onProgress),
       importDiaryAttachments: (entryId, ids) => req("POST", `/api/diary/${entryId}/attachments/import`, { attachment_ids: ids }),
       deleteAttachment: (id) => req("DELETE", `/api/attachments/${id}`),
     };
 
-    /** Upload multipart (não usa req(), que força Content-Type JSON). */
-    function upload(url, fields) {
-      const form = new FormData();
-      Object.keys(fields).forEach((k) => form.append(k, fields[k]));
-      return fetch(base + url, {
-        method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRF-TOKEN": BOOT.csrf || "",
-        },
-        body: form,
-      }).then(async (r) => {
-        if (r.status === 401) { window.location.href = base + "/login"; throw new Error("Sessão expirada"); }
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) throw Object.assign(new Error("Falha na requisição"), { status: r.status, data });
-        return data;
+    /** Upload multipart via XHR (suporta progresso). onProgress(percent 0-100) é opcional. */
+    function upload(url, fields, onProgress) {
+      return new Promise((resolve, reject) => {
+        const form = new FormData();
+        Object.keys(fields).forEach((k) => form.append(k, fields[k]));
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", base + url);
+        xhr.setRequestHeader("Accept", "application/json");
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+        xhr.setRequestHeader("X-CSRF-TOKEN", BOOT.csrf || "");
+        if (typeof onProgress === "function" && xhr.upload) {
+          xhr.upload.addEventListener("progress", (e) => {
+            if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+          });
+        }
+        xhr.onload = () => {
+          if (xhr.status === 401) { window.location.href = base + "/login"; reject(new Error("Sessão expirada")); return; }
+          let data = {};
+          try { data = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+          else reject(Object.assign(new Error("Falha na requisição"), { status: xhr.status, data }));
+        };
+        xhr.onerror = () => reject(Object.assign(new Error("Falha de rede"), { status: 0 }));
+        xhr.send(form);
       });
     }
   })();

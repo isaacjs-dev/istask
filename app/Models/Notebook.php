@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Caderno: agrupa notas dentro de uma Área de Trabalho (estilo Zoho Notebook).
@@ -18,7 +19,7 @@ class Notebook extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['workspace_id', 'name', 'color', 'position'];
+    protected $fillable = ['workspace_id', 'name', 'color', 'cover_type', 'cover_value', 'position'];
 
     public function workspace(): BelongsTo
     {
@@ -46,6 +47,10 @@ class Notebook extends Model
             'workspaceId' => (string) $this->workspace_id,
             'name'        => $this->name,
             'color'       => $this->color,
+            'coverType'   => $this->cover_type,
+            'coverValue'  => $this->cover_type === 'image' && $this->cover_value
+                ? Storage::disk('public')->url($this->cover_value)
+                : $this->cover_value,
             'position'    => (int) $this->position,
             'isOwner'     => optional($this->workspace)->owner_id === optional($me)->id,
             'ownerName'   => optional($owner)->name,

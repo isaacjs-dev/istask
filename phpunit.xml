@@ -29,6 +29,9 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <!-- IA desligada nos testes: log de atividades usa os templates determinísticos (sem rede) -->
+        <env name="GEMINI_API_KEY" value=""/>
+        <env name="ANTHROPIC_API_KEY" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

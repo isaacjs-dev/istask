@@ -296,12 +296,14 @@
   }
 
   function deleteDiary(id) {
-    if (!window.confirm("Excluir esta atividade do diário?")) return;
-    Api.deleteDiary(id).then(() => {
-      window.state.diaryEntries = entries().filter((e) => String(e.id) !== String(id));
-      expanded.delete(String(id));
-      render(); toast("Atividade excluída");
-    }).catch(fail);
+    window.Modals.confirm({ title: "Excluir atividade", message: "Excluir esta atividade do diário?", okText: "Excluir", danger: true }).then((ok) => {
+      if (!ok) return;
+      Api.deleteDiary(id).then(() => {
+        window.state.diaryEntries = entries().filter((e) => String(e.id) !== String(id));
+        expanded.delete(String(id));
+        render(); toast("Atividade excluída");
+      }).catch(fail);
+    });
   }
 
   // atualiza só a sub-lista de anexos (preserva o texto não salvo no editor aberto)

@@ -172,14 +172,16 @@
     const id = row.dataset.id;
     const proj = (window.state.projects || []).find((p) => String(p.id) === String(id));
     const name = proj ? proj.name : "este projeto";
-    if (!window.confirm(`Excluir o projeto "${name}"? As tarefas dele vão para "Geral".`)) return;
-    Api.deleteProject(id).then((res) => {
-      window.state.projects = res.projects;
-      window.state.tasks = res.tasks;
-      refreshList();
-      window.App.render();
-    }).catch((e) => {
-      showError((e.data && e.data.message) || "Não foi possível excluir o projeto.");
+    window.Modals.confirm({ title: "Excluir projeto", message: `Excluir o projeto "${name}"? As tarefas dele vão para "Geral".`, okText: "Excluir", danger: true }).then((ok) => {
+      if (!ok) return;
+      Api.deleteProject(id).then((res) => {
+        window.state.projects = res.projects;
+        window.state.tasks = res.tasks;
+        refreshList();
+        window.App.render();
+      }).catch((e) => {
+        showError((e.data && e.data.message) || "Não foi possível excluir o projeto.");
+      });
     });
   }
 

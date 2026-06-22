@@ -34,7 +34,8 @@ class DatabaseSeeder extends Seeder
                 'description'  => $t['description'],
                 'status'       => $t['status'],
                 'priority'     => $t['priority'],
-                'category'     => $t['category'],
+                // 'category' foi migrada para 'project' (migration 2026_06_11); a coluna
+                // não existe mais — o slug do projeto é derivado por categoryToProject().
                 'section'      => $t['section'],
                 'due_date'     => $t['due'],
                 'responsible'  => 'Você',

@@ -53,6 +53,7 @@ class Workspace extends Model
             'position'   => (int) $this->position,
             'isOwner'    => $this->owner_id === optional($me)->id,
             'ownerName'  => optional($this->owner)->name,
+            'ownerAvatarUrl' => optional($this->owner)->avatarUrl,
             'permission' => $me ? Access::workspacePermission($me, $this) : null,
             'members'    => $this->members->map(fn (User $u) => [
                 'id'         => (string) $u->id,

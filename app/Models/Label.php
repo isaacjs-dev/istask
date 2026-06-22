@@ -20,6 +20,11 @@ class Label extends Model
         return $this->belongsToMany(Note::class, 'label_note')->withTimestamps();
     }
 
+    public function tasks(): BelongsToMany
+    {
+        return $this->belongsToMany(Task::class, 'label_task')->withTimestamps();
+    }
+
     public function toApiArray(): array
     {
         return [

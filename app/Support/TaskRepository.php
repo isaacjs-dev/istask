@@ -3,10 +3,12 @@
 namespace App\Support;
 
 use App\Models\Conversation;
+use App\Models\DiaryEntry;
 use App\Models\Note;
 use App\Models\Notebook;
 use App\Models\Project;
 use App\Models\Task;
+use App\Models\TaskHistory;
 use App\Models\User;
 use App\Models\Workspace as WorkspaceModel;
 use App\Services\Diary\DiaryService;
@@ -54,7 +56,7 @@ class TaskRepository
     {
         return Task::query()
             ->whereIn('project_id', $this->accessibleProjectIds($user))
-            ->with(['steps', 'comments', 'history', 'project.members', 'project.workspace.members', 'attachments'])
+            ->with(['steps', 'comments', 'history', 'project.members', 'project.workspace.members', 'attachments', 'labels', 'links', 'taskRelations.relatedTask'])
             ->orderBy('position')
             ->orderBy('id')
             ->get()
@@ -127,6 +129,89 @@ class TaskRepository
         ];
     }
 
+    /**
+     * Registro de atividades das tarefas acessíveis (TaskHistory) + as entradas do
+     * Diário do próprio usuário, mescladas e ordenadas por data. Suporta filtro por
+     * período (from/to) e por área (workspaceId) — este último alimenta a visão de
+     * time (apenas TaskHistory; o Diário é pessoal e não entra na visão de time).
+     *
+     * @param array{from?:mixed,to?:mixed,workspaceId?:int,limit?:int} $opts
+     * @return array<int,array>
+     */
+    public function activitiesPayload(User $user, array $opts = []): array
+    {
+        $projectIds = $this->accessibleProjectIds($user);
+        $limit = $opts['limit'] ?? 500;
+
+        $q = TaskHistory::query()
+            ->whereHas('task', fn ($t) => $t->whereIn('project_id', $projectIds))
+            ->with(['task.project.workspace', 'user'])
+            ->orderByDesc('created_at')->orderByDesc('id');
+
+        if (! empty($opts['from'])) {
+            $q->where('created_at', '>=', $opts['from']);
+        }
+        if (! empty($opts['to'])) {
+            $q->where('created_at', '<=', $opts['to']);
+        }
+        if (! empty($opts['workspaceId'])) {
+            $wid = (int) $opts['workspaceId'];
+            $q->whereHas('task.project', fn ($p) => $p->where('workspace_id', $wid));
+        }
+
+        $items = $q->limit($limit)->get()->map(fn (TaskHistory $h) => [
+            'id'          => (string) $h->id,
+            'action'      => $h->action,
+            'by'          => $h->actor,
+            'byId'        => $h->user_id ? (string) $h->user_id : null,
+            'at'          => optional($h->created_at)->toIso8601String(),
+            'taskId'      => (string) $h->task_id,
+            'taskTitle'   => optional($h->task)->title,
+            'project'     => optional(optional($h->task)->project)->name,
+            'workspaceId' => optional(optional($h->task)->project)->workspace_id ? (string) $h->task->project->workspace_id : null,
+            'workspace'   => optional(optional(optional($h->task)->project)->workspace)->name,
+            'kind'        => 'task',
+        ])->all();
+
+        // Entradas do Diário do usuário (somente na visão pessoal; o Diário é pessoal).
+        if (empty($opts['workspaceId'])) {
+            $dq = DiaryEntry::where('user_id', $user->id)
+                ->whereNotNull('started_at')
+                ->with(['task', 'project.workspace'])
+                ->orderByDesc('started_at');
+            if (! empty($opts['from'])) {
+                $dq->where('started_at', '>=', $opts['from']);
+            }
+            if (! empty($opts['to'])) {
+                $dq->where('started_at', '<=', $opts['to']);
+            }
+            $diary = $dq->limit($limit)->get()->map(function (DiaryEntry $e) use ($user) {
+                $dur = \App\Support\ActivityNarrator::duration($e->computedDurationMinutes());
+
+                return [
+                    'id'          => 'diary-' . $e->id,
+                    'action'      => 'registrou no diário' . ($dur ? ' — <b>' . $dur . '</b>' : ''),
+                    'by'          => $user->name,
+                    'byId'        => (string) $user->id,
+                    'at'          => optional($e->started_at)->toIso8601String(),
+                    'taskId'      => $e->task_id ? (string) $e->task_id : null,
+                    'taskTitle'   => $e->title ?: ($e->description ?: optional($e->task)->title),
+                    'project'     => optional($e->project)->name,
+                    'workspaceId' => optional($e->project)->workspace_id ? (string) $e->project->workspace_id : null,
+                    'workspace'   => optional(optional($e->project)->workspace)->name,
+                    'kind'        => 'diary',
+                ];
+            })->all();
+
+            $items = array_merge($items, $diary);
+        }
+
+        // ordena por data desc (ISO8601 com offset consistente ordena lexicograficamente) e limita
+        usort($items, fn ($a, $b) => strcmp((string) ($b['at'] ?? ''), (string) ($a['at'] ?? '')));
+
+        return array_slice($items, 0, $limit);
+    }
+
     /** Avisos in-app não lidos (exceto lembretes de nota, que têm fluxo de toast próprio). @return array<int,array> */
     public function notificationsPayload(User $user): array
     {
@@ -174,6 +259,7 @@ class TaskRepository
                 'workspaceId' => $p->workspace_id ? (string) $p->workspace_id : null,
                 'isOwner'     => $p->user_id === $user->id,
                 'ownerName'   => optional($p->user)->name,
+                'ownerAvatarUrl' => optional($p->user)->avatarUrl,
                 // Projeto compartilhado individualmente cuja área eu não acesso → vai para a
                 // área virtual "Projetos compartilhados" no front (sempre visível quando houver).
                 'sharedSolo'  => $p->user_id !== $user->id && (! $p->workspace_id || ! $wsIds->contains($p->workspace_id)),

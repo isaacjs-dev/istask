@@ -132,17 +132,19 @@
     if (!row) return;
     const id = row.dataset.id;
     const w = (window.state.workspaces || []).find((x) => String(x.id) === String(id));
-    if (!window.confirm(`Excluir a área "${w ? w.name : ""}"? Projetos e cadernos dela vão para outra área.`)) return;
-    Api.deleteWorkspace(id).then((res) => {
-      applyLists(res);
-      if (String(window.state.activeWorkspaceId) === String(id)) {
-        window.state.activeWorkspaceId = res.fallbackId || ((window.state.workspaces[0] || {}).id) || null;
-        window.state.project = "geral";
-        window.state.noteNotebook = null;
-      }
-      window.App.render();
-      refreshList();
-    }).catch((e) => showError((e.data && e.data.message) || "Não foi possível excluir a área."));
+    window.Modals.confirm({ title: "Excluir área", message: `Excluir a área "${w ? w.name : ""}"? Projetos e cadernos dela vão para outra área.`, okText: "Excluir", danger: true }).then((ok) => {
+      if (!ok) return;
+      Api.deleteWorkspace(id).then((res) => {
+        applyLists(res);
+        if (String(window.state.activeWorkspaceId) === String(id)) {
+          window.state.activeWorkspaceId = res.fallbackId || ((window.state.workspaces[0] || {}).id) || null;
+          window.state.project = "geral";
+          window.state.noteNotebook = null;
+        }
+        window.App.render();
+        refreshList();
+      }).catch((e) => showError((e.data && e.data.message) || "Não foi possível excluir a área."));
+    });
   }
 
   window.openWorkspacesModal = open;

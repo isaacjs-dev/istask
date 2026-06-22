@@ -119,7 +119,7 @@
     if (!q) return notes;
     return notes.filter((n) =>
       (n.title || "").toLowerCase().includes(q) ||
-      (n.body || "").toLowerCase().includes(q) ||
+      U.stripHtml(n.body || "").toLowerCase().includes(q) ||
       (n.tags || "").toLowerCase().includes(q) ||
       (n.labels || []).some((l) => (l.name || "").toLowerCase().includes(q)) ||
       (n.items || []).some((it) => (it.text || "").toLowerCase().includes(q))
@@ -139,9 +139,15 @@
     if (wsId == null) return true; // caderno fora das minhas áreas (nota compartilhada direto comigo): sempre visível
     return String(wsId) === String(aw);
   }
+  // Caderno virtual que reúne notas compartilhadas individualmente (sem acesso ao caderno de origem).
+  const SHARED_NOTES_NB = "shared-notes";
+  function sharedSoloNotes() { return (window.state.notes || []).filter((n) => n.sharedSolo && !n.archivedAt); }
+
   function notebookMatch(n) {
     const nb = window.state.noteNotebook;
-    return !nb || String(n.notebookId) === String(nb);
+    if (nb === SHARED_NOTES_NB) return !!n.sharedSolo;
+    if (!nb) return !n.sharedSolo;                 // "Todos" não inclui as compartilhadas avulsas
+    return String(n.notebookId) === String(nb);
   }
   function activeNotebooks() {
     const aw = window.state.activeWorkspaceId;
@@ -218,9 +224,12 @@
     const nbs = activeNotebooks();
     const active = window.state.noteNotebook;
     const chip = (id, label, count) => `<button class="note-nb-chip${String(active || "") === String(id || "") ? " on" : ""}" data-note-act="set-notebook" data-nb="${id || ""}"><span class="material-symbols-outlined">${id ? "menu_book" : "apps"}</span>${label}${count != null ? `<span class="note-nb-count">${count}</span>` : ""}</button>`;
+    const solo = sharedSoloNotes().length;
+    const sharedChip = solo ? `<button class="note-nb-chip note-nb-chip-shared${String(active || "") === SHARED_NOTES_NB ? " on" : ""}" data-note-act="set-notebook" data-nb="${SHARED_NOTES_NB}"><span class="material-symbols-outlined">group</span>Notas compartilhadas<span class="note-nb-count">${solo}</span></button>` : "";
     return `<div class="note-notebook-bar note-m3">
       ${chip("", "Todos", null)}
       ${nbs.map((b) => chip(b.id, U.esc(b.name), b.count || 0)).join("")}
+      ${sharedChip}
       <button class="note-nb-add" data-note-act="new-notebook" title="Novo caderno"><span class="material-symbols-outlined">add</span></button>
     </div>`;
   }
@@ -349,10 +358,10 @@
     const patternClass = n.pattern && PATTERNS.some((p) => p.id === n.pattern) ? ` note-pattern-${n.pattern}` : "";
     const content = n.type === "checklist"
       ? readChecklistHTML(n, ro)
-      : `<div class="note-body${n.body ? "" : " empty"}">${n.body ? U.esc(n.body) : (ro ? "" : "Toque para escrever…")}</div>`;
+      : `<div class="note-body note-body-rich${n.body ? "" : " empty"}">${n.body ? U.sanitizeHtml(n.body) : (ro ? "" : "Toque para escrever…")}</div>`;
     return `
       <div class="masonry-item">
-        <div class="note-postit${patternClass}${ro ? " readonly" : ""}"${ro ? "" : ` data-note-act="edit"`} data-id="${n.id}" style="--note-bg:${COLORS[ck]};--rot:${rotOf(n)}deg">
+        <div class="note-postit${patternClass}${ro ? " readonly" : ""}" data-note-act="open" data-id="${n.id}" style="--note-bg:${COLORS[ck]};--rot:${rotOf(n)}deg">
           <span class="note-tape"></span>
           ${ro ? `<span class="note-ro-badge" title="Somente leitura"><span class="material-symbols-outlined">visibility</span></span>` : `
           <button class="note-pin${n.pinned ? " active" : ""}" data-note-act="pin" data-id="${n.id}" title="${n.pinned ? "Desafixar" : "Fixar"}">
@@ -381,7 +390,7 @@
       <button class="note-color-dot${ck === c ? " on" : ""}" data-note-act="set-color" data-id="${n.id}" data-color="${c}" style="background:${COLORS[c]}" title="${c}"></button>`).join("");
     const content = n.type === "checklist"
       ? editChecklistHTML(n)
-      : `<textarea class="note-body-input" placeholder="Escreva sua nota…" rows="5">${U.esc(n.body || "")}</textarea>`;
+      : `<div class="note-body-edit" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Corpo da nota" data-ph="Escreva sua nota…">${U.sanitizeHtml(n.body || "")}</div>`;
     return `
       <div class="masonry-item">
         <div class="note-postit editing" data-id="${n.id}" style="--note-bg:${COLORS[ck]}">
@@ -392,6 +401,7 @@
           <input class="note-tags-input" placeholder="tags separadas por vírgula" value="${U.esc(n.tags || "")}" />
           <div class="note-colors">${dots}</div>
           <div class="note-edit-actions">
+            <button class="note-btn-full" data-note-act="full-edit" data-id="${n.id}" title="Mais opções (edição completa)" aria-label="Mais opções (edição completa)"><span class="material-symbols-outlined">open_in_full</span></button>
             <button class="note-btn-ghost" data-note-act="cancel" data-id="${n.id}">Cancelar</button>
             <button class="note-btn-save" data-note-act="save" data-id="${n.id}">${icon("Check", 14)} Salvar</button>
           </div>
@@ -453,7 +463,8 @@
 
   // ---------- ações de nota ----------
   function createNote() {
-    const nb = window.state.noteNotebook || ((activeNotebooks()[0] || {}).id) || null;
+    const sel = window.state.noteNotebook;
+    const nb = (sel && /^\d+$/.test(String(sel)) ? sel : null) || ((activeNotebooks()[0] || {}).id) || null;
     Api.createNote(nb ? { body: "", notebook_id: +nb } : { body: "" }).then((res) => {
       window.state.notes = [res.note, ...(window.state.notes || [])];
       editingId = String(res.note.id);
@@ -461,15 +472,25 @@
     }).catch((e) => { console.error(e); window.App.toast("Não foi possível criar a nota."); });
   }
 
+  // Lê o corpo do editor inline (contenteditable) já sanitizado. Retorna null em
+  // notas do tipo checklist (sem corpo) e "" quando o conteúdo é apenas vazio/<br>.
+  function readInlineBody(card) {
+    const el = card.querySelector(".note-body-edit");
+    if (!el) return null;
+    const html = U.sanitizeHtml(el.innerHTML);
+    if (U.stripHtml(html) === "" && !/<(ul|ol|li|input|img|hr)\b/i.test(html)) return "";
+    return html;
+  }
+
   function saveNote(id, card) {
     const titleEl = card.querySelector(".note-title-input");
-    const bodyEl = card.querySelector(".note-body-input");
     const tagsEl = card.querySelector(".note-tags-input");
     const payload = {
       title: titleEl ? titleEl.value.trim() : "",
       tags: tagsEl ? tagsEl.value.trim() : "",
     };
-    if (bodyEl) payload.body = bodyEl.value; // checklist não tem corpo
+    const body = readInlineBody(card);
+    if (body !== null) payload.body = body; // checklist não tem corpo
     const n = findNote(id);
     if (n && n.color) payload.color = n.color;
     Api.updateNote(id, payload).then((res) => {
@@ -485,23 +506,47 @@
     const n = findNote(id);
     if (!n) return;
     const titleEl = card.querySelector(".note-title-input");
-    const bodyEl = card.querySelector(".note-body-input");
     const tagsEl = card.querySelector(".note-tags-input");
+    const body = readInlineBody(card);
     if (titleEl) n.title = titleEl.value;
-    if (bodyEl) n.body = bodyEl.value;
+    if (body !== null) n.body = body;
     if (tagsEl) n.tags = tagsEl.value;
     n.color = color;
     window.App.render();
     const payload = { color };
     if (titleEl) payload.title = n.title.trim();
-    if (bodyEl) payload.body = n.body;
+    if (body !== null) payload.body = n.body;
     if (tagsEl) payload.tags = n.tags.trim();
     Api.updateNote(id, payload)
       .catch((e) => { console.error(e); window.App.toast("Não foi possível mudar a cor."); });
   }
 
+  // Etapa 2: leva as alterações inline do card para o modal completo (Zoho) e abre-o.
+  function fullEdit(id, card) {
+    const n = findNote(id);
+    if (!n) return;
+    if (card) {
+      const titleEl = card.querySelector(".note-title-input");
+      const tagsEl = card.querySelector(".note-tags-input");
+      const body = readInlineBody(card);
+      if (titleEl) n.title = titleEl.value;
+      if (body !== null) n.body = body; // checklist não tem corpo
+      if (tagsEl) n.tags = tagsEl.value;
+      const payload = {};
+      if (titleEl) payload.title = (n.title || "").trim();
+      if (body !== null) payload.body = n.body;
+      if (tagsEl) payload.tags = (n.tags || "").trim();
+      if (Object.keys(payload).length) Api.updateNote(id, payload).then((res) => applyNoteUpdate(res.note)).catch(() => {});
+    }
+    stopEditSync();
+    editingId = null;
+    window.App.render();
+    if (window.NotesEditor) window.NotesEditor.open(id);
+  }
+
   function deleteNote(id) {
-    if (!window.confirm("Mover esta nota para a lixeira?")) return;
+    window.Modals.confirm({ title: "Mover para a lixeira", message: "Mover esta nota para a lixeira?", okText: "Mover", danger: true }).then((ok) => {
+    if (!ok) return;
     Api.deleteNote(id).then(() => {
       window.state.notes = (window.state.notes || []).filter((n) => String(n.id) !== String(id));
       if (String(editingId) === String(id)) editingId = null;
@@ -509,6 +554,7 @@
       window.App.render();
       window.App.toast("Nota movida para a lixeira");
     }).catch((e) => { console.error(e); window.App.toast("Não foi possível excluir a nota."); });
+    });
   }
 
   function togglePin(id) {
@@ -559,13 +605,14 @@
   function createNotebookPrompt() {
     const aw = window.state.activeWorkspaceId;
     if (!aw) { window.App.toast("Crie uma área de trabalho primeiro."); return; }
-    const name = window.prompt("Nome do novo caderno:");
-    if (!name || !name.trim()) return;
-    Api.createNotebook(name.trim(), +aw).then((res) => {
-      window.state.notebooks = res.notebooks;
-      if (res.notebook) window.state.noteNotebook = res.notebook.id;
-      window.App.render();
-    }).catch((e) => { console.error(e); window.App.toast("Não foi possível criar o caderno."); });
+    window.Modals.prompt({ title: "Novo caderno", label: "Nome", placeholder: "Ex.: Reuniões", okText: "Criar", maxlength: 120 }).then((name) => {
+      if (!name || !name.trim()) return;
+      Api.createNotebook(name.trim(), +aw).then((res) => {
+        window.state.notebooks = res.notebooks;
+        if (res.notebook) window.state.noteNotebook = res.notebook.id;
+        window.App.render();
+      }).catch((e) => { console.error(e); window.App.toast("Não foi possível criar o caderno."); });
+    });
   }
 
   function setView(view) {
@@ -711,12 +758,22 @@
       return;
     }
     const act = el.dataset.noteAct, id = el.dataset.id, card = el.closest(".note-postit");
-    if (act !== "new" && act !== "edit") e.stopPropagation();
+    if (act !== "new" && act !== "edit" && act !== "open") e.stopPropagation();
 
     if (act === "new") createNote();
     else if (act === "delete") deleteNote(id);
-    else if (act === "edit") { editingId = String(id); editDirty = false; closePopovers(); window.App.render(); startEditSync(id); }
+    else if (act === "open") {
+      // 1ª etapa: edição inline no próprio card. Notas só-leitura abrem o modal (sem edição).
+      const n = findNote(id);
+      if (n && n.permission === "view") { if (window.NotesEditor) window.NotesEditor.open(id); }
+      else { editingId = String(id); editDirty = false; closePopovers(); window.App.render(); startEditSync(id); }
+    }
+    else if (act === "edit") {
+      if (window.NotesEditor) { closePopovers(); window.NotesEditor.open(id); }
+      else { editingId = String(id); editDirty = false; closePopovers(); window.App.render(); startEditSync(id); }
+    }
     else if (act === "save") { stopEditSync(); saveNote(id, card); }
+    else if (act === "full-edit") { fullEdit(id, card); }
     else if (act === "cancel") { stopEditSync(); editDirty = false; editingId = null; window.App.render(); }
     else if (act === "set-color") setColor(id, el.dataset.color, card);
     else if (act === "pin") togglePin(id);
@@ -850,7 +907,11 @@
     // usado pelos modais de desenho/áudio após o upload
     addAttachment(noteId, attachment) {
       const n = findNote(noteId);
-      if (n) { n.attachments = [...(n.attachments || []), attachment]; window.App.render(); }
+      if (n) {
+        n.attachments = [...(n.attachments || []), attachment];
+        window.App.render();
+        if (window.NotesEditor && window.NotesEditor.isOpen() && String(window.NotesEditor.current()) === String(noteId)) window.NotesEditor.refreshAttachments();
+      }
     },
     uploadNoteAttachment,
   };

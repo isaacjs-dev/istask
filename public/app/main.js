@@ -24,7 +24,7 @@
     conversations: (boot.conversations || []).slice(),
     projects: (boot.projects || []).slice(),
     activeConversationId: boot.activeConversationId || null,
-    prefs: Object.assign({ chatPosition: "side", chatWidth: 372, chatHeight: 320, chatCollapsed: false, assistantName: "Assistente", assistantAvatar: "default" }, boot.prefs || {}),
+    prefs: Object.assign({ theme: "claro", chatPosition: "side", chatWidth: 372, chatHeight: 320, chatCollapsed: false, assistantName: "Assistente", assistantAvatar: "default" }, boot.prefs || {}),
     page: "tarefas",
     view: "list",
     notesView: "active",
@@ -32,6 +32,7 @@
     noteFilters: { color: null, type: null, labelId: null, hasReminder: false, shared: false },
     workspaces: (boot.workspaces || []).slice(),
     notebooks: (boot.notebooks || []).slice(),
+    notifications: (boot.notifications || []).slice(),
     activeWorkspaceId: boot.activeWorkspaceId || ((boot.workspaces || [])[0] && boot.workspaces[0].id) || null,
     noteNotebook: null,
     project: "geral",
@@ -45,6 +46,7 @@
     navOpen: false,
     chatExpanded: false,
     historyOpen: false,
+    configSection: "aparencia",
   };
 
   let els = {};
@@ -54,11 +56,18 @@
     const s = window.state;
     let list = s.tasks.slice();
     // escopo pela Área de Trabalho ativa (pela área da própria tarefa — slugs colidem entre donos, ex.: "geral")
-    if (s.activeWorkspaceId) {
+    if (s.activeWorkspaceId === (window.VIRTUAL_SHARED_WS || "shared-projects")) {
+      // Área virtual "Projetos compartilhados": só tarefas de projetos compartilhados avulsos.
+      const keys = window.sharedSoloKeys ? window.sharedSoloKeys() : new Set();
+      list = list.filter((t) => keys.has(t.project + "@" + (t.workspaceId != null ? t.workspaceId : "")));
+    } else if (s.activeWorkspaceId) {
       list = list.filter((t) => t.workspaceId == null || String(t.workspaceId) === String(s.activeWorkspaceId));
     }
+    // arquivadas só aparecem no filtro dedicado; nas demais visões ficam ocultas
+    const archivedFilter = s.filter === "arquivada";
+    list = list.filter((t) => (archivedFilter ? !!t.archivedAt : !t.archivedAt));
     if (s.project !== "geral") list = list.filter((t) => t.project === s.project);
-    if (s.filter) {
+    if (s.filter && !archivedFilter) {
       if (s.filter === "atrasada") list = list.filter((t) => TD.isOverdue(t));
       else if (s.filter.startsWith("prio:")) { const p = s.filter.slice(5); list = list.filter((t) => t.priority === p && t.status !== "concluido"); }
       else list = list.filter((t) => t.status === s.filter);
@@ -96,8 +105,10 @@
   }
 
   // ---------- PREFERÊNCIAS / LAYOUT ----------
+  const THEMES = ["claro", "sepia", "escuro", "escuro-suave"];
   function applyPrefs() {
     const p = window.state.prefs;
+    document.documentElement.dataset.theme = THEMES.includes(p.theme) ? p.theme : "claro";
     document.body.classList.toggle("cmd-bottom", p.chatPosition === "bottom");
     document.body.classList.toggle("cmd-side", p.chatPosition !== "bottom");
     document.body.classList.toggle("chat-collapsed", !!p.chatCollapsed);
@@ -118,20 +129,21 @@
     window.state.project = "geral";   // os projetos diferem por área
     window.state.noteNotebook = null; // reseta o filtro de caderno
     render();
-    savePrefs({ activeWorkspaceId: +id });
+    if (/^\d+$/.test(String(id))) savePrefs({ activeWorkspaceId: +id }); // área virtual não persiste
   }
   window.setActiveWorkspace = setActiveWorkspace;
 
   function createWorkspacePrompt() {
-    const name = window.prompt("Nome da nova área de trabalho:");
-    if (!name || !name.trim()) return;
-    Api.createWorkspace(name.trim()).then((res) => {
-      window.state.workspaces = res.workspaces;
-      window.state.projects = res.projects;
-      window.state.notebooks = res.notebooks;
-      if (res.workspace) setActiveWorkspace(res.workspace.id);
-      else render();
-    }).catch((e) => window.App.toast((e.data && e.data.message) || "Não foi possível criar a área."));
+    window.Modals.prompt({ title: "Nova área de trabalho", label: "Nome", placeholder: "Ex.: Fiscalização", okText: "Criar", maxlength: 120 }).then((name) => {
+      if (!name || !name.trim()) return;
+      Api.createWorkspace(name.trim()).then((res) => {
+        window.state.workspaces = res.workspaces;
+        window.state.projects = res.projects;
+        window.state.notebooks = res.notebooks;
+        if (res.workspace) setActiveWorkspace(res.workspace.id);
+        else render();
+      }).catch((e) => window.App.toast((e.data && e.data.message) || "Não foi possível criar a área."));
+    });
   }
   function applyAssistantPrefs() {
     const ico = document.querySelector(".chat-ai-ico");
@@ -176,6 +188,7 @@
     const task = res && res.task ? res.task : res;
     if (task && task.id) replaceTask(task);
     if (res && res.diaryEntries) window.state.diaryEntries = res.diaryEntries;
+    if (res && res.spawnedTask && res.spawnedTask.id) { replaceTask(res.spawnedTask); toast("Tarefa recorrente recriada"); }
   }
   function apiError(e) { console.error(e); toast("Não foi possível salvar. Tente novamente."); }
   async function reloadFromServer() {
@@ -203,7 +216,12 @@
       due: updated.due || null,
       responsible: updated.responsible || "Você",
       section: updated.section || updated._section || null,
-      checklist: (updated.checklist || []).map((c) => ({ id: c.id, text: c.text, done: !!c.done })),
+      startDate: updated.startDate || null,
+      estimatedMinutes: (updated.estimatedMinutes === "" || updated.estimatedMinutes == null) ? null : +updated.estimatedMinutes,
+      recurrence: updated.recurrence || "none",
+      remindAt: updated.remindAt || null,
+      labelIds: (updated.labelIds || []).map((x) => +x),
+      checklist: (updated.checklist || []).map((c) => ({ id: c.id, text: c.text, done: !!c.done, assignee: c.assignee || null, priority: c.priority || null, due: c.due || null })),
       comments: (updated.comments || []).map((c) => ({ id: c.id, text: c.text, author: c.author, initials: c.initials, color: c.color, ai: !!c.ai })),
     };
     Api.saveTask(updated.id, payload).then((res) => { applyTaskResult(res); render(); toast("Tarefa atualizada"); }).catch(apiError);
@@ -214,6 +232,17 @@
   }
   function addBlankTask() {
     Api.createTask({}).then((task) => { window.state.tasks = [task, ...window.state.tasks]; render(); window.Modal.open(task.id); }).catch(apiError);
+  }
+  function duplicateTask(id) {
+    Api.duplicateTask(id).then((task) => { window.state.tasks = [task, ...window.state.tasks]; render(); flash(task.id); toast("Tarefa duplicada"); }).catch(apiError);
+  }
+  function archiveTask(id) {
+    Api.archiveTask(id).then((task) => { replaceTask(task); render(); toast(task.archivedAt ? "Tarefa arquivada" : "Tarefa restaurada"); }).catch(apiError);
+  }
+  // dispara lembretes de tarefa vencidos (cria avisos no sino); só com a aba visível
+  function pollTaskReminders() {
+    if (document.visibilityState !== "visible") return;
+    Api.tasksRemindersDue().then((res) => { if (res && res.fired && res.fired.length) pollNotifications(); }).catch(() => {});
   }
 
   // ---------- IA / CHAT ----------
@@ -290,34 +319,88 @@
   }
   function renameConversation(id) {
     const cur = window.state.conversations.find((c) => String(c.id) === String(id));
-    const title = window.prompt("Renomear conversa:", cur ? cur.title : "");
-    if (title === null) return;
-    Api.updateConversation(id, { title: title.trim() }).then((conv) => {
-      window.state.conversations = window.state.conversations.map((c) => String(c.id) === String(conv.id) ? conv : c);
-      renderConversations();
-    }).catch(apiError);
+    window.Modals.prompt({ title: "Renomear conversa", label: "Título", value: cur ? cur.title : "", okText: "Salvar", maxlength: 120 }).then((title) => {
+      if (title === null) return;
+      Api.updateConversation(id, { title: title.trim() }).then((conv) => {
+        window.state.conversations = window.state.conversations.map((c) => String(c.id) === String(conv.id) ? conv : c);
+        renderConversations();
+      }).catch(apiError);
+    });
   }
 
-  // ---------- CONFIGURAÇÕES ----------
+  // ---------- CONFIGURAÇÕES (página completa) ----------
   function openSettings() {
-    els.settingsHost.innerHTML = window.Render.settingsHTML();
+    const s = window.state;
+    s.page = "config";
+    s.query = "";
+    renderHeader();
+    render();
+    applyChatFullscreen();
+    closeNavMobile();
   }
-  function closeSettings() { els.settingsHost.innerHTML = ""; }
+  // re-renderiza só o corpo (a página de config vive nele) — preserva foco do header
+  function refreshSettings() { if (window.state.page === "config") renderBody(); }
+
+  // ---------- AVISOS (sino) ----------
+  function openNotifications() { els.settingsHost.innerHTML = window.Render.notificationsHTML(); }
+  function closeNotifications() { els.settingsHost.innerHTML = ""; }
+  // atualiza só o badge (sem reconstruir o header → não atrapalha a busca/foco)
+  function updateBell() {
+    const n = (window.state.notifications || []).length;
+    document.querySelectorAll(".notif-bell").forEach((b) => {
+      let badge = b.querySelector(".notif-badge");
+      if (n) {
+        const txt = n > 9 ? "9+" : String(n);
+        if (badge) badge.textContent = txt; else b.insertAdjacentHTML("beforeend", `<span class="notif-badge">${txt}</span>`);
+      } else if (badge) { badge.remove(); }
+    });
+  }
+  function markNotifRead(id) {
+    Api.markNotificationRead(id).then((res) => {
+      window.state.notifications = res.notifications || [];
+      if (els.settingsHost.querySelector(".notif-panel")) openNotifications();
+      updateBell();
+    }).catch(() => {});
+  }
+  function markAllNotifRead() {
+    Api.markAllNotificationsRead().then((res) => {
+      window.state.notifications = res.notifications || [];
+      closeNotifications();
+      updateBell();
+    }).catch(() => {});
+  }
+  // polling leve (só com a aba visível): traz avisos novos sem recarregar a página
+  function pollNotifications() {
+    if (document.visibilityState !== "visible") return;
+    Api.notifications().then((res) => {
+      const next = res.notifications || [];
+      const cur = window.state.notifications || [];
+      const changed = next.length !== cur.length || (next[0] && cur[0] && String(next[0].id) !== String(cur[0].id)) || (next.length > 0 && cur.length === 0);
+      if (!changed) return;
+      window.state.notifications = next;
+      updateBell();
+      if (els.settingsHost.querySelector(".notif-panel")) openNotifications();
+    }).catch(() => {});
+  }
 
   // ---------- PERFIL ----------
   function saveProfile() {
-    const name = (els.settingsHost.querySelector('[data-field="profile-name"]').value || "").trim();
-    const bio = els.settingsHost.querySelector('[data-field="profile-bio"]').value || "";
+    const nameEl = document.querySelector('[data-field="profile-name"]');
+    const bioEl = document.querySelector('[data-field="profile-bio"]');
+    if (!nameEl) return;
+    const name = (nameEl.value || "").trim();
+    const bio = (bioEl && bioEl.value) || "";
     Api.updateProfile({ name, bio }).then((res) => {
       if (res && res.me) Object.assign(TD.me, res.me);
       render();
+      toast("Perfil salvo");
     }).catch(apiError);
   }
   function uploadAvatar(file) {
     Api.uploadAvatar(file).then((res) => {
       if (res && res.avatarUrl) {
         TD.me.avatarUrl = res.avatarUrl;
-        const ava = els.settingsHost.querySelector(".set-profile-ava");
+        const ava = document.querySelector(".set-profile-ava");
         if (ava) ava.outerHTML = U.avatarHTML(TD.me, "set-profile-ava");
         render();
         renderChat();
@@ -375,7 +458,7 @@
       if (!el) return;
       const act = el.dataset.act, id = el.dataset.id, s = window.state;
       if (act === "project") { s.project = id; render(); closeNavMobile(); }
-      else if (act === "page") { s.page = id; s.query = ""; renderHeader(); render(); applyChatFullscreen(); closeNavMobile(); }
+      else if (act === "page") { s.page = id; s.query = ""; if (id === "atividades" && window.ActivitiesPage) window.ActivitiesPage.reset(); renderHeader(); render(); applyChatFullscreen(); closeNavMobile(); }
       else if (act === "filter") { s.filter = s.filter === id ? null : id; render(); closeNavMobile(); }
       else if (act === "view") { s.view = id; render(); applyChatFullscreen(); }
       else if (act === "clear-filter") { s.filter = null; render(); }
@@ -385,18 +468,27 @@
         if (t && t.permission === "view") window.App.toast("Somente leitura nesta tarefa.");
         else toggleComplete(id);
       }
-      else if (act === "open") window.Modal.open(id);
+      else if (act === "open") window.QuickEdit.open(id, el, e);
       else if (act === "suggest") sendCommand(window.SUGGESTIONS[+el.dataset.i].text);
       else if (act === "cal-prev") { calShift(-1); }
       else if (act === "cal-next") { calShift(1); }
       else if (act === "cal-today") { s.calYear = 2026; s.calMonth = 5; renderBody(); }
       else if (act === "logout") logout();
       else if (act === "settings") openSettings();
-      else if (act === "settings-close") { if (el.classList.contains("modal-overlay") && e.target !== el) return; closeSettings(); }
-      else if (act === "set-pos") { savePrefs({ chatPosition: el.dataset.pos }); openSettings(); }
-      else if (act === "size-reset") savePrefs({ chatWidth: 372, chatHeight: 320 });
-      else if (act === "set-assistant-avatar") { savePrefs({ assistantAvatar: el.dataset.avatar }); openSettings(); }
-      else if (act === "profile-avatar-pick") { const f = els.settingsHost.querySelector(".set-avatar-file"); if (f) f.click(); }
+      else if (act === "notifications") openNotifications();
+      else if (act === "notif-close") { if (el.classList.contains("modal-overlay") && e.target !== el) return; closeNotifications(); }
+      else if (act === "notif-read") markNotifRead(el.dataset.id);
+      else if (act === "notif-read-all") markAllNotifRead();
+      else if (act === "cfg-nav") { window.state.configSection = el.dataset.section; renderBody(); }
+      else if (act === "set-theme") { savePrefs({ theme: el.dataset.theme }); refreshSettings(); }
+      else if (act === "set-ws-grouping") { savePrefs({ workspaceGrouping: el.dataset.value }); render(); }
+      else if (act === "set-nb-grouping") { savePrefs({ notebookGrouping: el.dataset.value }); render(); }
+      else if (act === "set-team") { savePrefs({ teamActivityEnabled: el.dataset.value === "on" }); render(); }
+      else if (act === "set-ai-log") { savePrefs({ aiActivityLog: el.dataset.value === "on" }); refreshSettings(); }
+      else if (act === "set-pos") { savePrefs({ chatPosition: el.dataset.pos }); refreshSettings(); }
+      else if (act === "size-reset") { savePrefs({ chatWidth: 372, chatHeight: 320 }); toast("Tamanho restaurado"); }
+      else if (act === "set-assistant-avatar") { savePrefs({ assistantAvatar: el.dataset.avatar }); refreshSettings(); }
+      else if (act === "profile-avatar-pick") { const f = document.querySelector(".set-avatar-file"); if (f) f.click(); }
       else if (act === "profile-save") saveProfile();
       else if (act === "new-chat") newConversation();
       else if (act === "history") toggleHistory();
@@ -414,6 +506,18 @@
       else if (act === "manage-workspaces") { if (window.openWorkspacesModal) window.openWorkspacesModal(); }
       else if (act === "undo") sendCommand("desfazer");
       else if (act === "redo") sendCommand("refazer");
+    });
+
+    // Acessibilidade: ativa por teclado (Enter/Espaço) os elementos clicáveis que
+    // não são botões nativos (cards de tarefa têm tabindex/role="button").
+    document.getElementById("root").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const el = e.target.closest("[data-act]");
+      if (!el || el !== e.target) return;
+      const tag = el.tagName;
+      if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      e.preventDefault();
+      el.click();
     });
 
     document.getElementById("root").addEventListener("change", (e) => {
@@ -556,10 +660,14 @@
     renderChat();
     renderConversations();
     bindEvents();
+    setTimeout(pollNotifications, 8000);    // primeira checagem após o carregamento
+    setInterval(pollNotifications, 60000);  // a cada 60s
+    setTimeout(pollTaskReminders, 9000);    // lembretes de tarefa vencidos
+    setInterval(pollTaskReminders, 60000);
     if (initialOpen) window.Modal.open(initialOpen);
   }
 
-  window.App = { saveTask, deleteTask, render, toast };
+  window.App = { saveTask, deleteTask, duplicateTask, archiveTask, render, toast };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })();

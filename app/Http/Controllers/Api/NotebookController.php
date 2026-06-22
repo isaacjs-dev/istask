@@ -8,6 +8,7 @@ use App\Models\Notebook;
 use App\Support\TaskRepository;
 use App\Support\Workspace;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Cadernos (CRUD + reordenar). Escopo por dono nesta fase; um caderno pertence a
@@ -36,6 +37,8 @@ class NotebookController extends Controller
             'name'         => 'required|string|max:120',
             'workspace_id' => 'required|integer',
             'color'        => 'nullable|string|max:16',
+            'cover_type'   => 'nullable|in:color,gradient,pattern,image',
+            'cover_value'  => 'nullable|string|max:255',
         ]);
         abort_unless($this->ownsWorkspace($user, (int) $data['workspace_id']), 404);
 
@@ -43,6 +46,8 @@ class NotebookController extends Controller
             'workspace_id' => $data['workspace_id'],
             'name'         => trim($data['name']),
             'color'        => $data['color'] ?? null,
+            'cover_type'   => $data['cover_type'] ?? null,
+            'cover_value'  => $data['cover_value'] ?? null,
             'position'     => (Notebook::where('workspace_id', $data['workspace_id'])->max('position') ?? -1) + 1,
         ]);
 
@@ -57,8 +62,10 @@ class NotebookController extends Controller
         $user = Workspace::user();
         $this->guard($notebook, $user);
         $data = $request->validate([
-            'name'  => 'sometimes|string|max:120',
-            'color' => 'sometimes|nullable|string|max:16',
+            'name'        => 'sometimes|string|max:120',
+            'color'       => 'sometimes|nullable|string|max:16',
+            'cover_type'  => 'sometimes|nullable|in:color,gradient,pattern,image',
+            'cover_value' => 'sometimes|nullable|string|max:255',
         ]);
         if (isset($data['name'])) {
             $notebook->name = trim($data['name']);
@@ -66,7 +73,37 @@ class NotebookController extends Controller
         if (array_key_exists('color', $data)) {
             $notebook->color = $data['color'];
         }
+        $oldImage = $notebook->cover_type === 'image' ? $notebook->cover_value : null;
+        if (array_key_exists('cover_type', $data)) {
+            $notebook->cover_type = $data['cover_type'];
+        }
+        if (array_key_exists('cover_value', $data)) {
+            $notebook->cover_value = $data['cover_value'];
+        }
         $notebook->save();
+        // trocou de capa de imagem para outra coisa → remove o arquivo antigo
+        if ($oldImage && ($notebook->cover_type !== 'image' || $notebook->cover_value !== $oldImage)) {
+            Storage::disk('public')->delete($oldImage);
+        }
+
+        return response()->json(['notebooks' => $this->repo->notebooksPayload($user)]);
+    }
+
+    /** Envia uma imagem de capa para o caderno (apenas o dono da área). */
+    public function uploadCover(Request $request, Notebook $notebook)
+    {
+        $user = Workspace::user();
+        $this->guard($notebook, $user);
+        $request->validate(['cover' => 'required|image|mimes:jpg,jpeg,png,webp|max:4096']);
+
+        $old = $notebook->cover_type === 'image' ? $notebook->cover_value : null;
+        $path = $request->file('cover')->store('notebook-covers', 'public');
+        $notebook->cover_type = 'image';
+        $notebook->cover_value = $path;
+        $notebook->save();
+        if ($old) {
+            Storage::disk('public')->delete($old);
+        }
 
         return response()->json(['notebooks' => $this->repo->notebooksPayload($user)]);
     }
