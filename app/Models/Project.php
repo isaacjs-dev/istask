@@ -14,7 +14,13 @@ class Project extends Model
 
     protected $fillable = [
         'user_id', 'workspace_id', 'slug', 'name', 'description', 'icon', 'position',
+        'start_date', 'due_date', 'completed_at', 'status', 'priority',
     ];
+
+    protected function casts(): array
+    {
+        return ['start_date' => 'date', 'due_date' => 'date', 'completed_at' => 'date'];
+    }
 
     public function user(): BelongsTo
     {

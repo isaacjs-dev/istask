@@ -33,10 +33,28 @@
       .then((ok) => { if (ok) close(); });
   }
 
-  function projectOptions() {
-    const list = ((window.state && window.state.projects) || []).map((p) => [p.slug, U.esc(p.name)]);
+  // Cascata Área→Projeto: o select de Projeto lista só os projetos da Área escolhida.
+  function wsOptions() {
+    const list = ((window.state && window.state.workspaces) || []).map((w) => [String(w.id), U.esc(w.name)]);
+    if (((window.state && window.state.projects) || []).some((p) => p.sharedSolo)) list.push(["__shared__", "Projetos compartilhados"]);
+    return list;
+  }
+  function projOptionsFor(wsId) {
+    const all = (window.state && window.state.projects) || [];
+    const list = (String(wsId) === "__shared__"
+      ? all.filter((p) => p.sharedSolo)
+      : all.filter((p) => String(p.workspaceId) === String(wsId) && !p.sharedSolo)
+    ).map((p) => [p.slug, U.esc(p.name)]);
     list.push(["__new__", "+ Criar novo projeto…"]);
     return list;
+  }
+  function draftWsId(d) {
+    const all = (window.state && window.state.projects) || [];
+    const p = all.find((x) => x.slug === d.project);
+    if (p) return p.sharedSolo ? "__shared__" : String(p.workspaceId);
+    if (d.workspaceId != null) return String(d.workspaceId);
+    if (window.state.activeWorkspaceId != null) return String(window.state.activeWorkspaceId);
+    return (wsOptions()[0] || [""])[0];
   }
 
   function open(id) {
@@ -132,6 +150,7 @@
     const done = draft.status === "concluido";
     const accent = PRIORITY[draft.priority] ? PRIORITY[draft.priority].color : "var(--accent)";
     const people = U.taskPeople(draft.project);
+    const wsId = draftWsId(draft);
     return `
     <div class="modal-overlay">
       <div class="modal">
@@ -202,7 +221,8 @@
             <div class="fld"><div class="fld-label">Status</div>${selectHTML(draft.status, STATUS_OPTS.map((s) => [s, STATUS[s].label]))}</div>
             <div class="fld"><div class="fld-label">Prioridade</div>${selectHTML(draft.priority, PRIO_OPTS.map((p) => [p, PRIORITY[p].label]))}</div>
             <div class="fld"><div class="fld-label">Data de entrega</div><input type="date" class="m-due" value="${draft.due || ""}" /></div>
-            <div class="fld"><div class="fld-label">Projeto</div>${selectHTML(draft.project, projectOptions())}</div>
+            <div class="fld"><div class="fld-label">Área de trabalho</div>${selectHTML(wsId, wsOptions(), "m-ws")}</div>
+            <div class="fld"><div class="fld-label">Projeto</div>${selectHTML(draft.project, projOptionsFor(wsId), "m-proj")}</div>
             <div class="fld"><div class="fld-label">Responsável</div><div class="resp-row"><span class="resp-ava-wrap">${U.respAvatarHTML(draft.responsible, people, "resp-ava")}</span><input class="txt m-resp" list="resp-people-modal" value="${U.esc(draft.responsible || "")}" placeholder="Nome (ou responsável externo)…" /></div>${U.peopleDatalistHTML("resp-people-modal", people)}</div>
             <div style="border-top:1px solid var(--line);margin:8px 0 14px"></div>
             <div class="fld-label">${icon("Calendar", 13, 'style="vertical-align:-2px;margin-right:4px"')} Planejamento</div>
@@ -445,27 +465,43 @@
       if (dl) dl.innerHTML = U.taskPeople(draft.project).map((p) => `<option value="${U.esc(p.name)}"></option>`).join("");
     }
 
-    // selects
+    // selects: status/prioridade pela ordem; área/projeto por classe (cascata)
     const sels = host.querySelectorAll(".modal-side select");
     sels[0].addEventListener("change", (e) => { draft.status = e.target.value; draft.completedAt = e.target.value === "concluido" ? TD.nowISO() : null; setCover(); });
     sels[1].addEventListener("change", (e) => { draft.priority = e.target.value; setCover(); });
-    sels[2].addEventListener("change", (e) => {
+    const wsSel = host.querySelector(".m-ws");
+    const projSel = host.querySelector(".m-proj");
+    function fillProjects(ws, selectSlug) {
+      const opts = projOptionsFor(ws);
+      projSel.innerHTML = opts.map(([v, l]) => `<option value="${v}"${v === selectSlug ? " selected" : ""}>${l}</option>`).join("");
+    }
+    function pickProject(slug) {
+      draft.project = slug;
+      const p = (window.state.projects || []).find((x) => x.slug === slug);
+      if (p) draft.workspaceId = p.workspaceId;
+      host.querySelector(".m-cat-label").textContent = U.projectName(draft.project);
+      refreshRespDatalist(); refreshRespAvatar();
+    }
+    wsSel.addEventListener("change", (e) => {
+      const first = projOptionsFor(e.target.value).find(([v]) => v !== "__new__");
+      fillProjects(e.target.value, first ? first[0] : "");
+      pickProject(first ? first[0] : "");
+    });
+    projSel.addEventListener("change", (e) => {
       if (e.target.value === "__new__") {
-        e.target.value = draft.project || "geral";
+        e.target.value = draft.project || "";
         window.openProjectModal({
           mode: "create",
           onCreated: (proj) => {
-            draft.project = proj.slug;
-            sels[2].innerHTML = projectOptions().map(([v, l]) => `<option value="${v}"${v === draft.project ? " selected" : ""}>${l}</option>`).join("");
-            host.querySelector(".m-cat-label").textContent = U.projectName(draft.project);
-            refreshRespDatalist(); refreshRespAvatar();
+            const ws = proj.workspaceId != null ? String(proj.workspaceId) : wsSel.value;
+            if (wsOptions().some(([v]) => v === ws)) wsSel.value = ws;
+            fillProjects(wsSel.value, proj.slug);
+            pickProject(proj.slug);
           },
         });
         return;
       }
-      draft.project = e.target.value;
-      host.querySelector(".m-cat-label").textContent = U.projectName(draft.project);
-      refreshRespDatalist(); refreshRespAvatar();
+      pickProject(e.target.value);
     });
     host.querySelector(".m-due").addEventListener("change", (e) => { draft.due = e.target.value; });
     host.querySelector(".m-resp").addEventListener("input", (e) => { draft.responsible = e.target.value; refreshRespAvatar(); });

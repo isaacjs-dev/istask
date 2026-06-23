@@ -69,6 +69,82 @@ class NoteController extends Controller
         ], 201);
     }
 
+    /**
+     * Importa notas em lote (assistente de Importação nas Configurações).
+     * Cada item é criado isoladamente — uma falha não derruba as demais. O front já
+     * resolveu caderno (id) e etiquetas (ids).
+     */
+    public function import(Request $request)
+    {
+        $user = Workspace::user();
+        $data = $request->validate([
+            'notes'                => 'required|array|min:1|max:500',
+            'notes.*.title'        => 'required|string|max:255',
+            'notes.*.body'         => 'nullable|string',
+            'notes.*.tags'         => 'nullable|string|max:255',
+            'notes.*.type'         => 'nullable|in:text,checklist',
+            'notes.*.color'        => $this->colorRule(),
+            'notes.*.pattern'      => $this->patternRule(),
+            'notes.*.notebook_id'  => 'nullable|integer',
+            'notes.*.labelIds'     => 'nullable|array',
+            'notes.*.labelIds.*'   => 'integer',
+            'notes.*.items'        => 'nullable|array',
+            'notes.*.items.*.text' => 'required|string',
+            'notes.*.items.*.done' => 'boolean',
+        ]);
+
+        $defaultNotebookId = Notebook::whereIn('workspace_id', $user->ownedWorkspaces()->select('id'))
+            ->orderBy('workspace_id')->orderBy('position')->value('id');
+
+        $results = [];
+        foreach ($data['notes'] as $i => $n) {
+            try {
+                $id = \Illuminate\Support\Facades\DB::transaction(function () use ($user, $n, $defaultNotebookId) {
+                    $nbId = $n['notebook_id'] ?? null;
+                    if ($nbId) {
+                        $nb = Notebook::find($nbId);
+                        if (! $nb || ! Access::can(Access::notebookPermission($user, $nb), 'edit')) {
+                            $nbId = null;
+                        }
+                    }
+                    $nbId = $nbId ?: $defaultNotebookId;
+
+                    $type = $n['type'] ?? 'text';
+                    $note = $user->notes()->create([
+                        'notebook_id' => $nbId,
+                        'title'       => $n['title'],
+                        'body'        => $type === 'checklist' ? '' : HtmlSanitizer::clean($n['body'] ?? ''),
+                        'tags'        => $n['tags'] ?? null,
+                        'color'       => $n['color'] ?? null,
+                        'pattern'     => $n['pattern'] ?? null,
+                        'type'        => $type,
+                    ]);
+                    if ($type === 'checklist' && ! empty($n['items'])) {
+                        $pos = 0;
+                        foreach ($n['items'] as $it) {
+                            $note->items()->create(['text' => $it['text'], 'done' => ! empty($it['done']), 'position' => $pos++]);
+                        }
+                    }
+                    if (! empty($n['labelIds'])) {
+                        $valid = Label::where('user_id', $user->id)->whereIn('id', $n['labelIds'])->pluck('id')->all();
+                        $note->labels()->sync($valid);
+                    }
+
+                    return (string) $note->id;
+                });
+                $results[$i] = ['index' => $i, 'ok' => true, 'id' => $id];
+            } catch (\Throwable $e) {
+                $results[$i] = ['index' => $i, 'ok' => false, 'error' => 'Não foi possível importar esta nota.'];
+            }
+        }
+        ksort($results);
+
+        return response()->json([
+            'results' => array_values($results),
+            'notes'   => $user->notes()->with(['labels', 'items', 'attachments', 'collaborators', 'user'])->latest('updated_at')->get()->map->toApiArray()->all(),
+        ]);
+    }
+
     public function show(Note $note)
     {
         Gate::forUser(Workspace::user())->authorize('view', $note);

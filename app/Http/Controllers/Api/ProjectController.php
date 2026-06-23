@@ -93,17 +93,47 @@ class ProjectController extends Controller
         $user = Workspace::user();
         abort_unless($project->user_id === $user->id, 404);
 
-        $name = trim($request->validate(['name' => 'required|string|max:120'])['name']);
+        $data = $request->validate([
+            'name'        => 'sometimes|string|max:120',
+            'description' => 'sometimes|nullable|string|max:2000',
+            'startDate'   => 'sometimes|nullable|date',
+            'dueDate'     => 'sometimes|nullable|date',
+            'completedAt' => 'sometimes|nullable|date',
+            'status'      => 'sometimes|nullable|in:nao_iniciado,em_andamento,concluido,pausado',
+            'priority'    => 'sometimes|nullable|in:urgente,alta,media,baixa',
+        ]);
 
-        if ($user->projects()->whereKeyNot($project->id)->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->exists()) {
-            return response()->json(['message' => 'Já existe um projeto com esse nome.'], 422);
+        if (array_key_exists('name', $data)) {
+            $name = trim($data['name']);
+            if ($user->projects()->whereKeyNot($project->id)->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->exists()) {
+                return response()->json(['message' => 'Já existe um projeto com esse nome.'], 422);
+            }
+            $project->name = $name;
         }
-
-        $old = $project->name;
-        $project->name = $name;
+        if (array_key_exists('description', $data)) {
+            $project->description = $data['description'];
+        }
+        if (array_key_exists('startDate', $data)) {
+            $project->start_date = $data['startDate'] ?: null;
+        }
+        if (array_key_exists('dueDate', $data)) {
+            $project->due_date = $data['dueDate'] ?: null;
+        }
+        if (array_key_exists('completedAt', $data)) {
+            $project->completed_at = $data['completedAt'] ?: null;
+        }
+        if (! empty($data['status'])) {
+            $project->status = $data['status'];
+            if ($data['status'] === 'concluido' && ! $project->completed_at) {
+                $project->completed_at = now();
+            }
+        }
+        if (! empty($data['priority'])) {
+            $project->priority = $data['priority'];
+        }
         $project->save();
 
-        $this->recorder->record($user, 'update', 'project', $project->id, ['name' => $old], ['name' => $name], "Projeto: {$old} → {$name}", ['kind' => 'project']);
+        $this->recorder->record($user, 'update', 'project', $project->id, null, ['name' => $project->name], "Projeto atualizado: {$project->name}", ['kind' => 'project']);
 
         return response()->json([
             'projects' => app(TaskRepository::class)->projectsPayload($user),

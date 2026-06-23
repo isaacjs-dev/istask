@@ -65,6 +65,8 @@
   <script src="{{ asset('app/share-modal.js') }}"></script>
   <script src="{{ asset('app/modal-v.js') }}"></script>
   <script src="{{ asset('app/quick-edit.js') }}"></script>
+  <script src="{{ asset('app/imports.js') }}"></script>
+  <script src="{{ asset('app/panel.js') }}"></script>
   <script src="{{ asset('app/main.js') }}"></script>
 </body>
 </html>

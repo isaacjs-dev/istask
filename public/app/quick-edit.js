@@ -21,9 +21,26 @@
     return host;
   }
 
-  function projectOptions() {
-    const list = ((window.state && window.state.projects) || []).map((p) => [p.slug, p.name]);
+  // Cascata Área→Projeto: o select de Projeto lista só os projetos da Área escolhida.
+  function wsOptions() {
+    const list = ((window.state && window.state.workspaces) || []).map((w) => [String(w.id), w.name]);
+    if (((window.state && window.state.projects) || []).some((p) => p.sharedSolo)) list.push(["__shared__", "Projetos compartilhados"]);
+    return list.length ? list : [[String(window.state.activeWorkspaceId || ""), "Pessoal"]];
+  }
+  function projOptionsFor(wsId) {
+    const all = (window.state && window.state.projects) || [];
+    const list = (String(wsId) === "__shared__"
+      ? all.filter((p) => p.sharedSolo)
+      : all.filter((p) => String(p.workspaceId) === String(wsId) && !p.sharedSolo)
+    ).map((p) => [p.slug, p.name]);
     return list.length ? list : [["geral", "Geral"]];
+  }
+  function draftWsId(d) {
+    const all = (window.state && window.state.projects) || [];
+    const p = all.find((x) => x.slug === d.project);
+    if (p) return p.sharedSolo ? "__shared__" : String(p.workspaceId);
+    if (d.workspaceId != null) return String(d.workspaceId);
+    return String(window.state.activeWorkspaceId || (wsOptions()[0] || [""])[0]);
   }
   function selectHTML(cls, value, opts) {
     return `<div class="select-wrap"><select class="${cls}"${readonly ? " disabled" : ""}>${opts.map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${U.esc(l)}</option>`).join("")}</select><span class="chev">${icon("ChevDown", 16)}</span></div>`;
@@ -60,6 +77,7 @@
     const cl = draft.checklist || [];
     const clDone = cl.filter((c) => c.done).length;
     const people = U.taskPeople(draft.project);
+    const wsId = draftWsId(draft);
     return `
       <div class="qe-backdrop" data-qe="close"></div>
       <div class="qe-pop" role="dialog" aria-label="Edição rápida da tarefa">
@@ -74,7 +92,8 @@
           <div class="fld"><div class="fld-label">Status</div>${selectHTML("qe-status", draft.status, STATUS_OPTS.map((s) => [s, STATUS[s].label]))}</div>
           <div class="fld"><div class="fld-label">Prioridade</div>${selectHTML("qe-prio", draft.priority, PRIO_OPTS.map((p) => [p, PRIORITY[p].label]))}</div>
           <div class="fld"><div class="fld-label">Data de entrega</div><input type="date" class="qe-due" value="${draft.due || ""}" aria-label="Data de entrega" /></div>
-          <div class="fld"><div class="fld-label">Projeto</div>${selectHTML("qe-project", draft.project, projectOptions())}</div>
+          <div class="fld"><div class="fld-label">Área</div>${selectHTML("qe-ws", wsId, wsOptions())}</div>
+          <div class="fld"><div class="fld-label">Projeto</div>${selectHTML("qe-project", draft.project, projOptionsFor(wsId))}</div>
           <div class="fld qe-col2"><div class="fld-label">Responsável</div><div class="resp-row"><span class="resp-ava-wrap qe-resp-ava-wrap">${U.respAvatarHTML(draft.responsible, people, "resp-ava qe-resp-ava")}</span><input class="txt qe-resp" list="resp-people-qe" value="${U.esc(draft.responsible || "")}" placeholder="Nome (ou externo)…" aria-label="Responsável" /></div>${U.peopleDatalistHTML("resp-people-qe", people)}</div>
         </div>
         ${(draft.labels && draft.labels.length) ? `<div class="qe-labels">${U.labelChips(draft.labels)}</div>` : ""}
@@ -241,13 +260,24 @@
       const wrap = host.querySelector(".qe-resp-ava-wrap");
       if (wrap) wrap.innerHTML = U.respAvatarHTML(draft.responsible, U.taskPeople(draft.project), "resp-ava qe-resp-ava");
     }
-    const project = host.querySelector(".qe-project");
-    if (project) project.addEventListener("change", (e) => {
-      draft.project = e.target.value;
+    function refreshRespDl() {
       const dl = host.querySelector("#resp-people-qe");
       if (dl) dl.innerHTML = U.taskPeople(draft.project).map((p) => `<option value="${U.esc(p.name)}"></option>`).join("");
-      refreshRespAvatar();
-      saveNow();
+    }
+    const wsSel = host.querySelector(".qe-ws");
+    const project = host.querySelector(".qe-project");
+    if (wsSel) wsSel.addEventListener("change", (e) => {
+      const opts = projOptionsFor(e.target.value);
+      const first = (opts[0] || [])[0] || "";
+      if (project) project.innerHTML = opts.map(([v, l]) => `<option value="${v}"${v === first ? " selected" : ""}>${U.esc(l)}</option>`).join("");
+      draft.project = first;
+      const p = (window.state.projects || []).find((x) => x.slug === first); if (p) draft.workspaceId = p.workspaceId;
+      refreshRespDl(); refreshRespAvatar(); saveNow();
+    });
+    if (project) project.addEventListener("change", (e) => {
+      draft.project = e.target.value;
+      const p = (window.state.projects || []).find((x) => x.slug === draft.project); if (p) draft.workspaceId = p.workspaceId;
+      refreshRespDl(); refreshRespAvatar(); saveNow();
     });
     const resp = host.querySelector(".qe-resp");
     if (resp) resp.addEventListener("input", (e) => {

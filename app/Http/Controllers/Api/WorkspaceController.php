@@ -51,14 +51,30 @@ class WorkspaceController extends Controller
         $user = Workspace::user();
         abort_unless($workspace->owner_id === $user->id, 404);
         $data = $request->validate([
-            'name' => 'sometimes|string|max:120',
-            'icon' => 'sometimes|nullable|string|max:32',
+            'name'        => 'sometimes|string|max:120',
+            'icon'        => 'sometimes|nullable|string|max:32',
+            'description' => 'sometimes|nullable|string|max:2000',
+            'startDate'   => 'sometimes|nullable|date',
+            'endDate'     => 'sometimes|nullable|date',
+            'status'      => 'sometimes|nullable|in:ativo,pausado,concluido,arquivado',
         ]);
         if (isset($data['name'])) {
             $workspace->name = trim($data['name']);
         }
         if (array_key_exists('icon', $data)) {
             $workspace->icon = $data['icon'];
+        }
+        if (array_key_exists('description', $data)) {
+            $workspace->description = $data['description'];
+        }
+        if (array_key_exists('startDate', $data)) {
+            $workspace->start_date = $data['startDate'] ?: null;
+        }
+        if (array_key_exists('endDate', $data)) {
+            $workspace->end_date = $data['endDate'] ?: null;
+        }
+        if (! empty($data['status'])) {
+            $workspace->status = $data['status'];
         }
         $workspace->save();
 

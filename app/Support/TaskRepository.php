@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Conversation;
 use App\Models\DiaryEntry;
+use App\Models\Label;
 use App\Models\Note;
 use App\Models\Notebook;
 use App\Models\Project;
@@ -12,6 +13,8 @@ use App\Models\TaskHistory;
 use App\Models\User;
 use App\Models\Workspace as WorkspaceModel;
 use App\Services\Diary\DiaryService;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -49,6 +52,53 @@ class TaskRepository
             $q->whereIn('workspace_id', $wsIds)
                 ->orWhereHas('members', fn ($m) => $m->where('users.id', $user->id));
         })->pluck('id');
+    }
+
+    /**
+     * Há mudanças em conteúdo ACESSÍVEL desde $since? Alimenta o polling de
+     * sincronização (Fase 3): cobre criação/edição/exclusão (soft) de tarefas,
+     * projetos, cadernos, notas e áreas acessíveis, etiquetas próprias e novos
+     * compartilhamentos/permissões para o usuário. Respeita estritamente o escopo.
+     */
+    public function hasChangesSince(User $user, Carbon $since): bool
+    {
+        $wsIds = $this->accessibleWorkspaceIds($user);
+        $projIds = $this->accessibleProjectIds($user);
+        $nbIds = $this->accessibleNotebookIds($user);
+        $touched = fn ($q) => $q->where('updated_at', '>', $since)->orWhere('deleted_at', '>', $since);
+
+        if (Task::withTrashed()->whereIn('project_id', $projIds)->where($touched)->exists()) {
+            return true;
+        }
+        if (Project::withTrashed()->whereIn('id', $projIds)->where($touched)->exists()) {
+            return true;
+        }
+        if (Notebook::withTrashed()->whereIn('id', $nbIds)->where($touched)->exists()) {
+            return true;
+        }
+        if (WorkspaceModel::withTrashed()->whereIn('id', $wsIds)->where($touched)->exists()) {
+            return true;
+        }
+        $noteChanged = Note::withTrashed()
+            ->where(function ($q) use ($user, $nbIds) {
+                $q->where('user_id', $user->id)
+                    ->orWhereHas('collaborators', fn ($c) => $c->where('users.id', $user->id))
+                    ->orWhereIn('notebook_id', $nbIds);
+            })
+            ->where($touched)->exists();
+        if ($noteChanged) {
+            return true;
+        }
+        if (Label::where('user_id', $user->id)->where('updated_at', '>', $since)->exists()) {
+            return true;
+        }
+        foreach (['workspace_members', 'project_members', 'notebook_members', 'note_collaborators'] as $pivot) {
+            if (DB::table($pivot)->where('user_id', $user->id)->where('updated_at', '>', $since)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array<int,array> */
@@ -125,6 +175,7 @@ class TaskRepository
             'diaryEntries'       => $user->diaryEntries()->with(['task', 'project', 'attachments', 'histories'])->latest('started_at')->limit(120)->get()->map->toApiArray()->all(),
             'me'                 => $this->meFor($user),
             'notifications'      => $this->notificationsPayload($user),
+            'serverTime'         => now()->toIso8601String(),
             'csrf'               => csrf_token(),
         ];
     }
@@ -256,6 +307,12 @@ class TaskRepository
                 'slug'        => $p->slug,
                 'name'        => $p->name,
                 'icon'        => $p->icon,
+                'description' => $p->description,
+                'startDate'   => optional($p->start_date)->format('Y-m-d'),
+                'dueDate'     => optional($p->due_date)->format('Y-m-d'),
+                'completedAt' => optional($p->completed_at)->format('Y-m-d'),
+                'status'      => $p->status ?: 'nao_iniciado',
+                'priority'    => $p->priority ?: 'media',
                 'workspaceId' => $p->workspace_id ? (string) $p->workspace_id : null,
                 'isOwner'     => $p->user_id === $user->id,
                 'ownerName'   => optional($p->user)->name,

@@ -230,8 +230,24 @@
     removeTask(id); render();
     Api.deleteTask(id).then(() => toast("Tarefa excluída")).catch((e) => { apiError(e); reloadFromServer(); });
   }
+  // Projeto de destino da "Nova tarefa": respeita o projeto/área do contexto atual.
+  function contextProjectSlug() {
+    const s = window.state;
+    const projects = s.projects || [];
+    const SHARED = window.VIRTUAL_SHARED_WS || "shared-projects";
+    const active = projects.find((p) => p.slug === s.project || p.id === s.project);
+    if (String(s.activeWorkspaceId) === String(SHARED)) {
+      if (active && active.sharedSolo) return active.slug;
+      const fs = projects.find((p) => p.sharedSolo);
+      return fs ? fs.slug : null;
+    }
+    if (active && String(active.workspaceId) === String(s.activeWorkspaceId)) return active.slug;
+    const first = projects.find((p) => String(p.workspaceId) === String(s.activeWorkspaceId) && !p.sharedSolo);
+    return first ? first.slug : null;
+  }
   function addBlankTask() {
-    Api.createTask({}).then((task) => { window.state.tasks = [task, ...window.state.tasks]; render(); window.Modal.open(task.id); }).catch(apiError);
+    const project = contextProjectSlug();
+    Api.createTask(project ? { project } : {}).then((task) => { window.state.tasks = [task, ...window.state.tasks]; render(); window.Modal.open(task.id); }).catch(apiError);
   }
   function duplicateTask(id) {
     Api.duplicateTask(id).then((task) => { window.state.tasks = [task, ...window.state.tasks]; render(); flash(task.id); toast("Tarefa duplicada"); }).catch(apiError);
@@ -243,6 +259,25 @@
   function pollTaskReminders() {
     if (document.visibilityState !== "visible") return;
     Api.tasksRemindersDue().then((res) => { if (res && res.fired && res.fired.length) pollNotifications(); }).catch(() => {});
+  }
+
+  // ---------- sincronização em tempo real (polling) ----------
+  let lastSync = (window.__BOOT__ && window.__BOOT__.serverTime) || null;
+  // Evita interromper o usuário: pula a sincronização enquanto há edição em foco
+  // ou um editor/fluxo aberto (modal de tarefa, edição rápida, editor de nota,
+  // compartilhamento, edição inline de nota, revisão de importação, páginas de edição).
+  function syncBusy() {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return true;
+    return !!document.querySelector(".modal-overlay, .qe-pop, .note-editor, .share-overlay, .note-postit.editing, .imp-card, [data-pan-field]");
+  }
+  function pollSync() {
+    if (document.visibilityState !== "visible" || syncBusy()) return;
+    Api.sync(lastSync).then((res) => {
+      if (!res) return;
+      if (res.now) lastSync = res.now;
+      if (res.changed) applyPayload(res); // atualiza listas/contadores/filtros sem F5
+    }).catch(() => {});
   }
 
   // ---------- IA / CHAT ----------
@@ -664,10 +699,23 @@
     setInterval(pollNotifications, 60000);  // a cada 60s
     setTimeout(pollTaskReminders, 9000);    // lembretes de tarefa vencidos
     setInterval(pollTaskReminders, 60000);
+    setTimeout(pollSync, 10000);            // sincronização em tempo real (conteúdo compartilhado)
+    setInterval(pollSync, 12000);
     if (initialOpen) window.Modal.open(initialOpen);
   }
 
-  window.App = { saveTask, deleteTask, duplicateTask, archiveTask, render, toast };
+  // Mescla um payload do servidor no estado e re-renderiza — fonte única de atualização
+  // (usada pelos módulos após mutações e, futuramente, pelo polling de sincronização).
+  function applyPayload(res) {
+    if (!res || typeof res !== "object") return;
+    ["tasks", "notes", "projects", "notebooks", "workspaces", "labels", "diaryEntries", "notifications"].forEach((k) => {
+      if (Array.isArray(res[k])) window.state[k] = res[k];
+    });
+    if (res.prefs) window.state.prefs = Object.assign({}, window.state.prefs, res.prefs);
+    render();
+  }
+
+  window.App = { saveTask, deleteTask, duplicateTask, archiveTask, render, toast, applyPayload };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })();

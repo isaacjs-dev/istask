@@ -19,7 +19,12 @@ class Workspace extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['owner_id', 'name', 'icon', 'position'];
+    protected $fillable = ['owner_id', 'name', 'icon', 'position', 'description', 'start_date', 'end_date', 'status'];
+
+    protected function casts(): array
+    {
+        return ['start_date' => 'date', 'end_date' => 'date'];
+    }
 
     public function owner(): BelongsTo
     {
@@ -51,6 +56,10 @@ class Workspace extends Model
             'name'       => $this->name,
             'icon'       => $this->icon,
             'position'   => (int) $this->position,
+            'description' => $this->description,
+            'startDate'  => optional($this->start_date)->format('Y-m-d'),
+            'endDate'    => optional($this->end_date)->format('Y-m-d'),
+            'status'     => $this->status ?: 'ativo',
             'isOwner'    => $this->owner_id === optional($me)->id,
             'ownerName'  => optional($this->owner)->name,
             'ownerAvatarUrl' => optional($this->owner)->avatarUrl,

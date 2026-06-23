@@ -31,6 +31,7 @@
   const PAGES = [
     { id: "tarefas", label: "Tarefas", icon: "Checklist" },
     { id: "notas", label: "Notas", icon: "NotebookPen" },
+    { id: "panel", label: "Painel", icon: "Kanban" },
     { id: "atividades", label: "Atividades", icon: "History" },
     { id: "diario", label: "Diário", icon: "BookOpen" },
   ];
@@ -204,6 +205,7 @@
     if (p === "atividades") return atividadesHeaderHTML();
     if (p === "diario") return diarioHeaderHTML();
     if (p === "config") return configHeaderHTML();
+    if ((p === "panel" || p === "edit-ws" || p === "edit-proj") && window.Panel) return window.Panel.headerHTML();
     return tarefasHeaderHTML();
   }
 
@@ -326,6 +328,7 @@
     if (p === "atividades") return updateActivitiesHeader();
     if (p === "diario") return updateDiarioHeader();
     if (p === "config") return; // header estático
+    if (p === "panel" || p === "edit-ws" || p === "edit-proj") return; // header gerido pelo Panel
     return updateTarefasHeader();
   }
 
@@ -384,6 +387,9 @@
     if (s.page === "atividades") return window.Render.activitiesPageHTML();
     if (s.page === "diario") return window.Render.diarioPageHTML();
     if (s.page === "config") return configPageHTML();
+    if (s.page === "panel") return window.Panel ? window.Panel.panelHTML() : "";
+    if (s.page === "edit-ws") return window.Panel ? window.Panel.wsEditHTML() : "";
+    if (s.page === "edit-proj") return window.Panel ? window.Panel.projEditHTML() : "";
     const v = s.view;
     if (v === "kanban") return kanbanHTML();
     if (v === "calendar") return calendarHTML();
@@ -617,6 +623,8 @@
   const CONFIG_CATS = [
     { id: "aparencia", label: "Aparência", icon: "Sparkles" },
     { id: "geral", label: "Geral", icon: "Settings" },
+    { id: "importar-tarefas", label: "Importação de Tarefas", icon: "Inbox" },
+    { id: "importar-notas", label: "Importação de Notas", icon: "Inbox" },
     { id: "assistente", label: "Assistente", icon: "Comment" },
     { id: "conta", label: "Conta", icon: "User" },
   ];
@@ -666,6 +674,8 @@
     const selectedAvatar = U.ASSISTANT_AVATARS.includes(prefs.assistantAvatar) ? prefs.assistantAvatar : "default";
 
     const sections = {
+      "importar-tarefas": `<div class="set-block">${window.Imports ? window.Imports.sectionHTML("task") : ""}</div>`,
+      "importar-notas": `<div class="set-block">${window.Imports ? window.Imports.sectionHTML("note") : ""}</div>`,
       aparencia: `
         <div class="set-block">
           <div class="set-block-label">Tema</div>

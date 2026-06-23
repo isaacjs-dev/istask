@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\WorkspaceMemberController;
 use App\Http\Controllers\Api\PreferenceController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\WorkspaceController;
 use App\Support\TaskRepository;
@@ -45,8 +46,10 @@ Route::middleware('auth')->group(function () {
     */
     Route::prefix('api')->group(function () {
         Route::get('/bootstrap', fn (TaskRepository $repo) => response()->json($repo->bootstrap()));
+        Route::get('/sync', [SyncController::class, 'index']);
 
         Route::get('/tasks/reminders/due', [TaskController::class, 'remindersDue']);
+        Route::post('/tasks/import', [TaskController::class, 'import']);
         Route::post('/tasks', [TaskController::class, 'store']);
         Route::put('/tasks/{task}', [TaskController::class, 'sync']);
         Route::delete('/tasks/{task}', [TaskController::class, 'destroy']);
@@ -97,6 +100,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/notes/trash', [NoteController::class, 'trash']);
         Route::get('/notes/reminders/due', [NoteController::class, 'remindersDue']);
         Route::get('/notes/reminders', [NoteController::class, 'reminders']);
+        Route::post('/notes/import', [NoteController::class, 'import']);
         Route::post('/notes', [NoteController::class, 'store']);
         Route::get('/notes/{note}', [NoteController::class, 'show']);
         Route::patch('/notes/{note}', [NoteController::class, 'update']);

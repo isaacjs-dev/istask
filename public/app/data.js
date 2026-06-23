@@ -113,6 +113,8 @@
     }
     return {
       createTask: (payload) => req("POST", "/api/tasks", payload || {}),
+      importTasks: (tasks) => req("POST", "/api/tasks/import", { tasks }),
+      importNotes: (notes) => req("POST", "/api/notes/import", { notes }),
       saveTask: (id, payload) => req("PUT", `/api/tasks/${id}`, payload),
       deleteTask: (id) => req("DELETE", `/api/tasks/${id}`),
       toggleTask: (id) => req("POST", `/api/tasks/${id}/toggle`),
@@ -128,6 +130,7 @@
       tasksRemindersDue: () => req("GET", "/api/tasks/reminders/due"),
       command: (text, conversationId) => req("POST", "/api/ai/command", { text, conversation_id: conversationId ? +conversationId : null }),
       bootstrap: () => req("GET", "/api/bootstrap"),
+      sync: (since) => req("GET", "/api/sync" + (since ? "?since=" + encodeURIComponent(since) : "")),
       activities: (params) => req("GET", "/api/activities" + (params && Object.keys(params).length ? ("?" + new URLSearchParams(params).toString()) : "")),
       createProject: (name, workspaceId) => req("POST", "/api/projects", workspaceId ? { name, workspace_id: workspaceId } : { name }),
       updateProject: (id, payload) => req("PATCH", `/api/projects/${id}`, payload),

@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\DiaryEntry;
+use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\Diary\DiaryService;
 use App\Support\Access;
 use App\Support\ActivityNarrator;
+use App\Support\HtmlSanitizer;
+use App\Support\TaskRepository;
 use App\Support\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -24,7 +27,7 @@ class TaskController extends Controller
         'urgente' => 'Urgente', 'alta' => 'Alta', 'media' => 'Média', 'baixa' => 'Baixa',
     ];
 
-    public function __construct(private DiaryService $diary, private \App\Services\Ai\GeminiService $gemini)
+    public function __construct(private DiaryService $diary, private \App\Services\Ai\GeminiService $gemini, private TaskRepository $repo)
     {
     }
 
@@ -47,11 +50,12 @@ class TaskController extends Controller
         return $natural ? e($natural) : $deterministic;
     }
 
-    /** Cria uma tarefa em branco (botão "Nova tarefa" / "+"). */
+    /** Cria uma tarefa em branco (botão "Nova tarefa" / "+") no projeto do contexto atual. */
     public function store(Request $request)
     {
         $user = Workspace::user();
-        $project = Workspace::defaultProject();
+        // Respeita o projeto do contexto (Área/Projeto ativos no front); senão, o padrão.
+        $project = $this->resolveProject($user, $request->input('project'));
         $task = $project->tasks()->create([
             'title'       => $request->input('title', 'Nova tarefa'),
             'description' => '',
@@ -63,6 +67,94 @@ class TaskController extends Controller
         $task->logHistory($this->naturalize('created', ActivityNarrator::created($task->title), ['title' => $task->title]), $user->name, $user->id);
 
         return response()->json($this->present($task), 201);
+    }
+
+    /**
+     * Importa tarefas em lote (assistente de Importação nas Configurações).
+     * Cada item é criado isoladamente (transação por item) — uma falha não derruba as demais.
+     * O front já resolveu projeto (slug), etiquetas (ids), seção/status/prioridade (listas fixas).
+     */
+    public function import(Request $request)
+    {
+        $user = Workspace::user();
+        $data = $request->validate([
+            'tasks'                        => 'required|array|min:1|max:500',
+            'tasks.*.title'                => 'required|string|max:255',
+            'tasks.*.description'          => 'nullable|string',
+            'tasks.*.status'               => 'nullable|in:pendente,andamento,aguardando,concluido,cancelado',
+            'tasks.*.priority'             => 'nullable|in:urgente,alta,media,baixa',
+            'tasks.*.project'              => 'nullable|string|max:60',
+            'tasks.*.section'              => 'nullable|string|max:60',
+            'tasks.*.due'                  => 'nullable|date',
+            'tasks.*.startDate'            => 'nullable|date',
+            'tasks.*.responsible'          => 'nullable|string|max:120',
+            'tasks.*.recurrence'           => 'nullable|in:none,daily,weekly,monthly',
+            'tasks.*.estimatedMinutes'     => 'nullable|integer|min:0|max:100000',
+            'tasks.*.labelIds'             => 'nullable|array',
+            'tasks.*.labelIds.*'           => 'integer',
+            'tasks.*.checklist'            => 'nullable|array',
+            'tasks.*.checklist.*.text'     => 'required|string',
+            'tasks.*.checklist.*.done'     => 'boolean',
+            'tasks.*.checklist.*.assignee' => 'nullable|string|max:120',
+            'tasks.*.checklist.*.priority' => 'nullable|in:urgente,alta,media,baixa',
+            'tasks.*.checklist.*.due'      => 'nullable|date',
+        ]);
+
+        $results = [];
+        foreach ($data['tasks'] as $i => $t) {
+            try {
+                $id = DB::transaction(function () use ($user, $t) {
+                    $project = $this->resolveProject($user, $t['project'] ?? null);
+                    $status = $t['status'] ?? 'pendente';
+                    $task = $project->tasks()->create([
+                        'title'             => $t['title'],
+                        'description'       => HtmlSanitizer::clean($t['description'] ?? ''),
+                        'status'            => $status,
+                        'priority'          => $t['priority'] ?? 'media',
+                        'section'           => $t['section'] ?? null,
+                        'responsible'       => $t['responsible'] ?? $user->name,
+                        'due_date'          => $t['due'] ?? null,
+                        'start_date'        => $t['startDate'] ?? null,
+                        'estimated_minutes' => $t['estimatedMinutes'] ?? null,
+                        'recurrence'        => $t['recurrence'] ?? 'none',
+                        'completed_at'      => $status === 'concluido' ? now() : null,
+                        'position'          => 0,
+                    ]);
+                    if (! empty($t['labelIds'])) {
+                        $valid = $user->labels()->whereIn('id', $t['labelIds'])->pluck('id')->all();
+                        $task->labels()->sync($valid);
+                    }
+                    $this->syncChecklist($task, $t['checklist'] ?? []);
+                    $task->logHistory(ActivityNarrator::created($task->title), $user->name, $user->id);
+
+                    return (string) $task->id;
+                });
+                $results[$i] = ['index' => $i, 'ok' => true, 'id' => $id];
+            } catch (\Throwable $e) {
+                $results[$i] = ['index' => $i, 'ok' => false, 'error' => 'Não foi possível importar esta tarefa.'];
+            }
+        }
+        ksort($results);
+
+        return response()->json([
+            'results' => array_values($results),
+            'tasks'   => $this->repo->tasksFor($user),
+        ]);
+    }
+
+    /** Resolve o projeto de destino por slug (entre os acessíveis com edição); senão, o padrão. */
+    private function resolveProject(User $user, ?string $slug): Project
+    {
+        if ($slug) {
+            foreach (Project::where('slug', $slug)->get() as $p) {
+                $perm = Access::projectPermission($user, $p);
+                if ($perm && Access::can($perm, 'edit')) {
+                    return $p;
+                }
+            }
+        }
+
+        return Workspace::defaultProject();
     }
 
     /** Alterna concluída/pendente (checkbox do card). */

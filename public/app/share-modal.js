@@ -19,7 +19,9 @@
   function entity() { return (cfg().list() || []).find((x) => String(x.id) === String(ctx.id)); }
 
   function applyRes(res) {
-    ["workspaces", "projects", "notebooks"].forEach((k) => { if (res[k]) window.state[k] = res[k]; });
+    // mescla tudo que o endpoint devolver (membros mudam workspaces/projects/notebooks;
+    // tasks/notes entram quando o servidor reenviar o escopo acessível atualizado)
+    ["workspaces", "projects", "notebooks", "tasks", "notes", "labels"].forEach((k) => { if (res[k]) window.state[k] = res[k]; });
   }
 
   function close() {
