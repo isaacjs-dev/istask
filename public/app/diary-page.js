@@ -200,7 +200,7 @@
           <div class="diary-att-title">${clip} Anexos</div>
           <div class="diary-att-dyn">${attListHTML(e)}${importHTML(e)}</div>
           <div class="diary-att-actions">
-            <button class="btn-ghost" data-diary-act="att-pick" data-id="${e.id}">${icon("Plus", 14)} Anexar arquivo</button>
+            <button class="set-reset" data-diary-act="att-pick" data-id="${e.id}">${icon("Plus", 14)} Anexar arquivo</button>
             <input type="file" class="diary-att-file" data-id="${e.id}" hidden />
           </div>
         </div>
@@ -208,9 +208,9 @@
         ${historyHTML(e)}
 
         <div class="diary-detail-actions">
-          <button class="btn-ghost danger" data-diary-act="delete" data-id="${e.id}">${icon("Trash", 15)} Excluir</button>
+          <button class="set-reset danger" data-diary-act="delete" data-id="${e.id}">${icon("Trash", 15)} Excluir</button>
           <div style="flex:1"></div>
-          ${e.open ? `<button class="btn-ghost" data-diary-act="close" data-id="${e.id}">${icon("Check", 14)} Encerrar agora</button>` : ""}
+          ${e.open ? `<button class="set-reset" data-diary-act="close" data-id="${e.id}">${icon("Check", 14)} Encerrar agora</button>` : ""}
           <button class="btn-primary" data-diary-act="save" data-id="${e.id}">${icon("Check", 14)} Salvar</button>
         </div>
       </div>`;
@@ -255,7 +255,7 @@
 
   // ---------- ações ----------
   function createDiary() {
-    Api.createDiary({}).then((res) => {
+    return Api.createDiary({}).then((res) => {
       replaceEntry(res.entry);
       window.state.diaryEntries = [res.entry, ...entries().filter((e) => String(e.id) !== String(res.entry.id))];
       expanded.add(String(res.entry.id));
@@ -343,7 +343,7 @@
     const el = ev.target.closest("[data-diary-act]");
     if (!el) return;
     const act = el.dataset.diaryAct, id = el.dataset.id, card = el.closest(".diary-card");
-    if (act === "new") createDiary();
+    if (act === "new") window.UI.busyGuard(el, createDiary, "Abrindo…");
     else if (act === "filter-type") { typeFilter = el.dataset.type || null; render(); }
     else if (act === "expand") { const k = String(id); expanded.has(k) ? expanded.delete(k) : expanded.add(k); render(); }
     else if (act === "open-task") window.Modal.open(id);

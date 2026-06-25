@@ -50,23 +50,118 @@ class TaskController extends Controller
         return $natural ? e($natural) : $deterministic;
     }
 
-    /** Cria uma tarefa em branco (botão "Nova tarefa" / "+") no projeto do contexto atual. */
+    /**
+     * Cria uma tarefa a partir do rascunho do modal "Nova tarefa".
+     *
+     * A tarefa só nasce aqui — no clique em "Salvar/Criar" —, nunca ao abrir o
+     * modal. É idempotente por `client_token` (gerado pelo front por rascunho):
+     * reenvios do MESMO rascunho (duplo clique no Salvar, retry de rede) devolvem
+     * a tarefa já criada em vez de duplicá-la. A proteção é por token/usuário,
+     * sem bloqueio global — a criação simultânea de outros usuários nunca é afetada.
+     */
     public function store(Request $request)
     {
         $user = Workspace::user();
-        // Respeita o projeto do contexto (Área/Projeto ativos no front); senão, o padrão.
-        $project = $this->resolveProject($user, $request->input('project'));
-        $task = $project->tasks()->create([
-            'title'       => $request->input('title', 'Nova tarefa'),
-            'description' => '',
-            'status'      => 'pendente',
-            'priority'    => 'media',
-            'responsible' => $user->name,
-            'position'    => 0,
+
+        // Idempotência (early return): mesmo rascunho já criado → devolve a existente.
+        $token = $request->input('client_token');
+        if ($token && ($hit = $this->existingByToken($user, $token))) {
+            return response()->json($this->present($hit), 200);
+        }
+
+        $data = $request->validate([
+            'client_token'         => 'nullable|uuid',
+            'title'                => 'nullable|string|max:255',
+            'description'          => 'nullable|string',
+            'status'               => 'nullable|in:pendente,andamento,aguardando,concluido,cancelado',
+            'priority'             => 'nullable|in:urgente,alta,media,baixa',
+            'project'              => 'nullable|string|max:60',
+            'due'                  => 'nullable|date',
+            'responsible'          => 'nullable|string|max:120',
+            'section'              => 'nullable|string|max:60',
+            'startDate'            => 'nullable|date',
+            'estimatedMinutes'     => 'nullable|integer|min:0|max:100000',
+            'recurrence'           => 'nullable|in:none,daily,weekly,monthly',
+            'remindAt'             => 'nullable|date',
+            'labelIds'             => 'nullable|array',
+            'labelIds.*'           => 'integer',
+            'checklist'            => 'nullable|array',
+            'checklist.*.id'       => 'nullable',
+            'checklist.*.text'     => 'required|string',
+            'checklist.*.done'     => 'boolean',
+            'checklist.*.assignee' => 'nullable|string|max:120',
+            'checklist.*.priority' => 'nullable|in:urgente,alta,media,baixa',
+            'checklist.*.due'      => 'nullable|date',
+            'comments'             => 'nullable|array',
+            'comments.*.text'      => 'required|string',
+            'comments.*.author'    => 'nullable|string',
+            'comments.*.initials'  => 'nullable|string',
+            'comments.*.color'     => 'nullable|string',
+            'comments.*.ai'        => 'boolean',
         ]);
-        $task->logHistory($this->naturalize('created', ActivityNarrator::created($task->title), ['title' => $task->title]), $user->name, $user->id);
+
+        // Respeita o projeto do contexto (Área/Projeto ativos no front); senão, o padrão.
+        $project = $this->resolveProject($user, $data['project'] ?? null);
+
+        try {
+            $task = $this->persistNewTask($user, $project, $data, $token ?: null);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // O índice único de client_token barrou a inserção. Dois casos:
+            if ($token && ($hit = $this->existingByToken($user, $token))) {
+                return response()->json($this->present($hit), 200); // duplo-envio do MESMO usuário → devolve a dele
+            }
+            if ($token) {
+                // colisão com token alheio (UUID — caso patológico): cria sem o token,
+                // nunca bloqueia este usuário (idempotência não é trava global).
+                $task = $this->persistNewTask($user, $project, $data, null);
+
+                return response()->json($this->present($task), 201);
+            }
+            throw $e;
+        }
 
         return response()->json($this->present($task), 201);
+    }
+
+    /** Cria a tarefa + relações (etiquetas/checklist/comentários/histórico) numa transação. */
+    private function persistNewTask(User $user, Project $project, array $data, ?string $token): Task
+    {
+        return DB::transaction(function () use ($user, $project, $data, $token) {
+            $status = $data['status'] ?? 'pendente';
+            $task = $project->tasks()->create([
+                'client_token'      => $token,
+                'title'             => $data['title'] ?? 'Nova tarefa',
+                'description'       => HtmlSanitizer::clean($data['description'] ?? ''),
+                'status'            => $status,
+                'priority'          => $data['priority'] ?? 'media',
+                'section'           => $data['section'] ?? null,
+                'due_date'          => $data['due'] ?? null,
+                'responsible'       => $data['responsible'] ?? $user->name,
+                'start_date'        => $data['startDate'] ?? null,
+                'estimated_minutes' => $data['estimatedMinutes'] ?? null,
+                'recurrence'        => $data['recurrence'] ?? 'none',
+                'remind_at'         => $data['remindAt'] ?? null,
+                'completed_at'      => $status === 'concluido' ? now() : null,
+                'position'          => 0,
+            ]);
+            if (! empty($data['labelIds'])) {
+                $valid = $user->labels()->whereIn('id', $data['labelIds'])->pluck('id')->all();
+                $task->labels()->sync($valid);
+            }
+            $this->syncChecklist($task, $data['checklist'] ?? []);
+            $this->syncComments($task, $data['comments'] ?? [], $user);
+            $task->logHistory($this->naturalize('created', ActivityNarrator::created($task->title), ['title' => $task->title]), $user->name, $user->id);
+
+            return $task;
+        });
+    }
+
+    /** Tarefa já criada com este token de idempotência, se o usuário tem acesso a ela. */
+    private function existingByToken(User $user, string $token): ?Task
+    {
+        $task = Task::where('client_token', $token)->first();
+
+        return ($task && Access::taskPermission($user, $task)) ? $task : null;
     }
 
     /**
@@ -142,19 +237,26 @@ class TaskController extends Controller
         ]);
     }
 
-    /** Resolve o projeto de destino por slug (entre os acessíveis com edição); senão, o padrão. */
-    private function resolveProject(User $user, ?string $slug): Project
+    /** Projeto por slug entre os ACESSÍVEIS com permissão de edição (próprios OU compartilhados); null se nenhum. */
+    private function findEditableProject(User $user, ?string $slug): ?Project
     {
-        if ($slug) {
-            foreach (Project::where('slug', $slug)->get() as $p) {
-                $perm = Access::projectPermission($user, $p);
-                if ($perm && Access::can($perm, 'edit')) {
-                    return $p;
-                }
+        if (! $slug) {
+            return null;
+        }
+        foreach (Project::where('slug', $slug)->get() as $p) {
+            $perm = Access::projectPermission($user, $p);
+            if ($perm && Access::can($perm, 'edit')) {
+                return $p;
             }
         }
 
-        return Workspace::defaultProject();
+        return null;
+    }
+
+    /** Resolve o projeto de destino por slug (entre os acessíveis com edição); senão, o padrão. */
+    private function resolveProject(User $user, ?string $slug): Project
+    {
+        return $this->findEditableProject($user, $slug) ?? Workspace::defaultProject();
     }
 
     /** Alterna concluída/pendente (checkbox do card). */
@@ -263,7 +365,8 @@ class TaskController extends Controller
                 $task->logHistory(ActivityNarrator::descriptionEdited(), $actor, $userId);
             }
             if (! empty($data['project']) && $data['project'] !== $task->project?->slug) {
-                $found = $user->projects()->where('slug', $data['project'])->first();
+                // resolve entre projetos ACESSÍVEIS com edição (inclui compartilhados), não só os próprios
+                $found = $this->findEditableProject($user, $data['project']);
                 if ($found) {
                     $task->project_id = $found->id;
                     $task->logHistory(ActivityNarrator::projectChanged($found->name), $actor, $userId);

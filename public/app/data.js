@@ -105,7 +105,8 @@
         },
         body: body ? JSON.stringify(body) : undefined,
       }).then(async (r) => {
-        if (r.status === 401) { window.location.href = base + "/login"; throw new Error("Sessão expirada"); }
+        // 401 (não autenticado) ou 419 (sessão/CSRF expirado): vai ao login, sem página de erro.
+        if (r.status === 401 || r.status === 419) { window.location.href = base + "/login"; throw new Error("Sessão expirada"); }
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw Object.assign(new Error("Falha na requisição"), { status: r.status, data });
         return data;
@@ -220,7 +221,7 @@
           });
         }
         xhr.onload = () => {
-          if (xhr.status === 401) { window.location.href = base + "/login"; reject(new Error("Sessão expirada")); return; }
+          if (xhr.status === 401 || xhr.status === 419) { window.location.href = base + "/login"; reject(new Error("Sessão expirada")); return; }
           let data = {};
           try { data = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
           if (xhr.status >= 200 && xhr.status < 300) resolve(data);

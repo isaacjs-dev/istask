@@ -21,6 +21,7 @@
     blue: "#bfdbfe", lilac: "#e9d5ff", peach: "#fed7aa",
     gray: "#e8eaed", teal: "#c4ebe3", coral: "#ffd3c2",
     sand: "#f0e4c8", sage: "#dbe9d2", rose: "#ffd9e3",
+    accent: "var(--accent-soft)", // nota seguindo a cor do tema (não é um swatch da paleta)
   };
   const PATTERNS = [
     { id: "dots", label: "Pontilhado", icon: "blur_on" },
@@ -78,7 +79,11 @@
     return h;
   }
   function colorKey(n) {
-    return COLORS[n.color] ? n.color : PALETTE[hash(n.id) % PALETTE.length];
+    if (n.color && COLORS[n.color]) return n.color;          // cor explícita da nota
+    const def = (window.state.prefs && window.state.prefs.noteDefaultColor) || "";
+    if (def === "accent") return "accent";                    // seguir a cor do tema
+    if (COLORS[def]) return def;                              // cor padrão fixa escolhida
+    return PALETTE[hash(n.id) % PALETTE.length];              // "variadas" (padrão atual)
   }
   function rotOf(n) {
     const r = [-2, -1.5, -1, 1, 1.5, 2][hash(n.id) % 6];
@@ -465,7 +470,7 @@
   function createNote() {
     const sel = window.state.noteNotebook;
     const nb = (sel && /^\d+$/.test(String(sel)) ? sel : null) || ((activeNotebooks()[0] || {}).id) || null;
-    Api.createNote(nb ? { body: "", notebook_id: +nb } : { body: "" }).then((res) => {
+    return Api.createNote(nb ? { body: "", notebook_id: +nb } : { body: "" }).then((res) => {
       window.state.notes = [res.note, ...(window.state.notes || [])];
       editingId = String(res.note.id);
       window.App.render();
@@ -760,7 +765,7 @@
     const act = el.dataset.noteAct, id = el.dataset.id, card = el.closest(".note-postit");
     if (act !== "new" && act !== "edit" && act !== "open") e.stopPropagation();
 
-    if (act === "new") createNote();
+    if (act === "new") window.UI.busyGuard(el, createNote, "Abrindo…");
     else if (act === "delete") deleteNote(id);
     else if (act === "open") {
       // 1ª etapa: edição inline no próprio card. Notas só-leitura abrem o modal (sem edição).

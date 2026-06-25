@@ -10,7 +10,17 @@
   const PRIO_OPTS = ["urgente", "alta", "media", "baixa"];
 
   let draft = null, host = null, initialDesc = "", initialSnapshot = "", editingCommentId = null, expandedStepId = null;
+  let saving = false; // trava de envio único do botão Salvar/Criar (por instância do modal)
   const PRIO_LABELS = { urgente: "Urgente", alta: "Alta", media: "Média", baixa: "Baixa" };
+
+  function isNew() { return !!(draft && draft.__isNew); }
+  // Coloca um botão em estado "ocupado" (desabilitado + rótulo) e devolve o restaurador.
+  function setBtnBusy(btn, label) {
+    if (!btn) return () => {};
+    const html = btn.innerHTML, dis = btn.disabled;
+    btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.textContent = label;
+    return () => { btn.disabled = dis; btn.removeAttribute("aria-busy"); btn.innerHTML = html; };
+  }
 
   // serializa os campos editáveis para detectar alterações não salvas
   function snapshot() {
@@ -60,10 +70,19 @@
   function open(id) {
     const task = window.state.tasks.find((t) => t.id === id);
     if (!task) return;
-    draft = JSON.parse(JSON.stringify(task));
+    mount(task);
+  }
+
+  // Abre o modal para um RASCUNHO em memória (botão "Nova tarefa"). Não toca no
+  // banco nem no estado: cancelar/fechar simplesmente descarta o rascunho.
+  function openDraft(d) { mount(d); }
+
+  function mount(source) {
+    draft = JSON.parse(JSON.stringify(source));
     initialDesc = draft.description || "";
     editingCommentId = null;
     expandedStepId = null;
+    saving = false;
     host = document.getElementById("modalHost");
     host.innerHTML = shellHTML();
     const rte = host.querySelector(".rte");
@@ -75,7 +94,10 @@
     renderLabels();
     renderRelations();
     initialSnapshot = snapshot();
+    if (isNew()) { const ti = host.querySelector(".modal-title-input"); if (ti) ti.focus(); }
   }
+
+  function isOpen() { return !!host && !!host.innerHTML; }
 
   // --------- Etiquetas ---------
   function renderLabels() {
@@ -208,7 +230,9 @@
               <div class="m-label">${icon("Folder", 15)} Anexos <span class="count m-att-count"></span></div>
               <div class="m-att-list"></div>
               <div class="m-att-add">
-                <button class="m-att-pick" data-m="att-pick" type="button">${icon("Plus", 14)} Anexar arquivo</button>
+                ${isNew()
+                  ? `<span class="m-att-hint">Anexos ficam disponíveis após criar a tarefa.</span>`
+                  : `<button class="m-att-pick" data-m="att-pick" type="button">${icon("Plus", 14)} Anexar arquivo</button>`}
                 <input type="file" class="m-att-file" hidden>
               </div>
             </div>
@@ -230,6 +254,7 @@
             <div class="fld"><div class="fld-label">Duração estimada (min)</div><input class="txt m-est" type="number" min="0" step="5" value="${draft.estimatedMinutes != null ? draft.estimatedMinutes : ""}" placeholder="—" /></div>
             <div class="fld"><div class="fld-label">Recorrência</div>${selectHTML(draft.recurrence || "none", [["none", "Não repete"], ["daily", "Diária"], ["weekly", "Semanal"], ["monthly", "Mensal"]], "m-recur")}</div>
             <div class="fld"><div class="fld-label">Lembrete</div><input type="datetime-local" class="m-remind txt" value="${localDT(draft.remindAt)}" /></div>
+            ${isNew() ? "" : `
             <div style="border-top:1px solid var(--line);margin:8px 0 14px"></div>
             <div class="fld-label">${icon("Dots", 13, 'style="vertical-align:-2px;margin-right:4px"')} Ações</div>
             <div class="m-actions">
@@ -238,14 +263,17 @@
             </div>
             <div style="border-top:1px solid var(--line);margin:14px 0 14px"></div>
             <div class="fld-label">${icon("History", 13, 'style="vertical-align:-2px;margin-right:4px"')} Histórico</div>
-            <div class="hist">${histHTML()}</div>
+            <div class="hist">${histHTML()}</div>`}
           </div>
         </div>
         <div class="modal-foot">
-          <button class="btn-save" data-m="save">Salvar alterações</button>
-          <button class="btn-cancel" data-m="close">Cancelar</button>
-          <button class="btn-del-task" data-m="delete" title="Excluir tarefa">${icon("Trash", 17)}</button>
-          <button class="btn-complete${draft.status === "concluido" ? " is-done" : ""}" data-m="complete">${icon("Check", 16)} ${draft.status === "concluido" ? "Reabrir tarefa" : "Marcar como concluída"}</button>
+          ${isNew()
+            ? `<button class="btn-save" data-m="save">${icon("Check", 16)} Criar tarefa</button>
+               <button class="btn-cancel" data-m="close">Cancelar</button>`
+            : `<button class="btn-save" data-m="save">Salvar alterações</button>
+               <button class="btn-cancel" data-m="close">Cancelar</button>
+               <button class="btn-del-task" data-m="delete" title="Excluir tarefa">${icon("Trash", 17)}</button>
+               <button class="btn-complete${draft.status === "concluido" ? " is-done" : ""}" data-m="complete">${icon("Check", 16)} ${draft.status === "concluido" ? "Reabrir tarefa" : "Marcar como concluída"}</button>`}
         </div>
       </div>
     </div>`;
@@ -388,6 +416,7 @@
   const REL_TYPES = { relacionada: "Relacionada", bloqueia: "Bloqueia", depende: "Depende de" };
   function renderRelations() {
     const el = host.querySelector(".m-rel"); if (!el) return;
+    if (isNew()) { el.innerHTML = `<div class="m-rel-empty">Links e tarefas relacionadas ficam disponíveis após criar a tarefa.</div>`; return; }
     const links = draft.links || [], rels = draft.relations || [];
     const others = (window.state.tasks || []).filter((t) => String(t.id) !== String(draft.id) && !t.archivedAt);
     el.innerHTML = `
@@ -589,10 +618,20 @@
     setCover();
   }
   function save() {
+    if (saving) return;                       // rule: impede envio duplicado (duplo clique no Salvar/Criar)
     draft.description = host.querySelector(".rte").innerHTML;
-    window.App.saveTask(JSON.parse(JSON.stringify(draft)));
-    close();
+    const btn = host.querySelector(".btn-save");
+    const snap = JSON.parse(JSON.stringify(draft));
+    saving = true;
+    const restore = setBtnBusy(btn, isNew() ? "Criando…" : "Salvando…");
+    const fail = (e) => { saving = false; restore(); window.App.toast((e && e.data && e.data.message) || "Não foi possível salvar. Tente novamente."); };
+    if (isNew()) {
+      // cria no banco só agora; idempotente por client_token (sem duplicar em retry)
+      window.App.createTaskFromDraft(snap).then(() => { saving = false; close(); }).catch(fail);
+    } else {
+      window.App.saveTask(snap).then((ok) => { saving = false; if (ok) close(); else restore(); });
+    }
   }
 
-  window.Modal = { open, close };
+  window.Modal = { open, openDraft, close, isOpen };
 })();

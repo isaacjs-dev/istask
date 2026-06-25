@@ -35,16 +35,15 @@ Route::middleware('guest')->group(function () {
 
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout')->middleware('auth');
 
-// ---- Aplicação + API (autenticados) ----
-Route::middleware('auth')->group(function () {
-    // SPA shell (protótipo) com estado inicial injetado
-    Route::get('/', [AppController::class, 'index']);
+// Home: landing pública para visitantes; SPA (shell + estado) para autenticados.
+// A ramificação fica em AppController::index — a rota é pública para a landing ser a página inicial.
+Route::get('/', [AppController::class, 'index'])->name('home');
 
-    /*
-    | API REST consumida pelo front. Herda sessão e proteção CSRF do middleware
-    | "web" (o front envia o token via header X-CSRF-TOKEN).
-    */
-    Route::prefix('api')->group(function () {
+/*
+| API REST consumida pelo front (autenticada). Herda sessão e proteção CSRF do
+| middleware "web" (o front envia o token via header X-CSRF-TOKEN).
+*/
+Route::middleware('auth')->prefix('api')->group(function () {
         Route::get('/bootstrap', fn (TaskRepository $repo) => response()->json($repo->bootstrap()));
         Route::get('/sync', [SyncController::class, 'index']);
 
@@ -155,5 +154,4 @@ Route::middleware('auth')->group(function () {
         // Perfil do usuário
         Route::patch('/profile', [ProfileController::class, 'update']);
         Route::post('/profile/avatar', [ProfileController::class, 'uploadAvatar']);
-    });
 });

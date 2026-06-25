@@ -8,6 +8,11 @@ class AppController extends Controller
 {
     public function index(TaskRepository $repo)
     {
+        // Visitante: landing pública (página inicial do sistema). Autenticado: o SPA.
+        if (! auth()->check()) {
+            return view('landing');
+        }
+
         return view('app', ['boot' => $repo->bootstrap()]);
     }
 }

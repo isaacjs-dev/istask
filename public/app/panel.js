@@ -69,7 +69,7 @@
     const p = S().page;
     const titles = { panel: "Painel de Projetos", "edit-ws": "Editar área de trabalho", "edit-proj": "Editar projeto" };
     const subs = { panel: "Acompanhamento por área de trabalho", "edit-ws": "Detalhes e configurações da área", "edit-proj": "Detalhes e configurações do projeto" };
-    const back = p !== "panel" ? `<button class="btn-ghost" data-pan="back">${icon("ChevLeft", 16)} Voltar</button>` : "";
+    const back = p !== "panel" ? `<button class="set-reset" data-pan="back">${icon("ChevLeft", 16)} Voltar</button>` : "";
     return `
       <div class="c-head-top">
         <button class="c-menu" data-act="nav" title="Menu" aria-label="Abrir menu">${icon("Menu", 20)}</button>
@@ -127,7 +127,7 @@
       <div class="pan">
         <div class="pan-top">
           ${wsSel}
-          ${cur && cur.isOwner ? `<button class="btn-ghost" data-pan="edit-ws" data-id="${wsId}">${icon("Pencil", 14)} Editar área</button>` : ""}
+          ${cur && cur.isOwner ? `<button class="set-reset" data-pan="edit-ws" data-id="${wsId}">${icon("Pencil", 14)} Editar área</button>` : ""}
           <span class="pan-spacer"></span>
           <div class="pan-overall"><span>Conclusão geral</span>${barHTML(sum.pct)}<b>${sum.pct}%</b></div>
         </div>
@@ -170,7 +170,7 @@
     const d = ensureDraft("ws", ws);
     const dis = ro ? " disabled" : "";
     return `
-      <div class="pan-edit">
+      <div class="pan-form">
         ${ro ? `<div class="pan-ro">Somente leitura — apenas o dono da área pode editar.</div>` : ""}
         ${field("Nome", `<input class="pan-in" data-pan-field="name" value="${U.esc(d.name)}"${dis}>`)}
         ${field("Descrição", `<textarea class="pan-in" rows="3" data-pan-field="description"${dis}>${U.esc(d.description)}</textarea>`)}
@@ -180,9 +180,9 @@
           ${selectField("Status", d.status, Object.keys(WS_STATUS).map((k) => [k, WS_STATUS[k].label]), "status", ro)}
         </div>
         <div class="pan-actions">
-          ${ws.isOwner ? `<button class="btn-ghost" data-pan="share-ws" data-id="${ws.id}">${icon("User", 14)} Participantes</button>` : ""}
+          ${ws.isOwner ? `<button class="set-reset" data-pan="share-ws" data-id="${ws.id}">${icon("User", 14)} Participantes</button>` : ""}
           <span class="pan-spacer"></span>
-          <button class="btn-ghost" data-pan="back">Cancelar</button>
+          <button class="set-reset" data-pan="back">Cancelar</button>
           ${ro ? "" : `<button class="note-btn-save" data-pan="save-ws" data-id="${ws.id}">${icon("Check", 14)} Salvar</button>`}
         </div>
       </div>`;
@@ -196,7 +196,7 @@
     const m = projMetrics(p.slug);
     const wsOpts = workspaces().map((w) => [String(w.id), w.name]);
     return `
-      <div class="pan-edit">
+      <div class="pan-form">
         ${ro ? `<div class="pan-ro">Somente leitura — apenas o dono do projeto pode editar.</div>` : ""}
         <div class="pan-edit-prog"><span>Conclusão</span>${barHTML(m.pct, m.pct >= 100 ? "done" : "")}<b>${m.pct}%</b> <span class="pan-edit-counts">${m.done}/${m.total} tarefas · ${m.overdue} atrasadas</span></div>
         ${field("Nome", `<input class="pan-in" data-pan-field="name" value="${U.esc(d.name)}"${dis}>`)}
@@ -210,9 +210,9 @@
           ${field("Conclusão efetiva", `<input type="date" class="pan-in" data-pan-field="completedAt" value="${U.esc(d.completedAt)}"${dis}>`)}
         </div>
         <div class="pan-actions">
-          ${p.isOwner ? `<button class="btn-ghost" data-pan="share-proj" data-id="${p.id}">${icon("User", 14)} Participantes</button>` : ""}
+          ${p.isOwner ? `<button class="set-reset" data-pan="share-proj" data-id="${p.id}">${icon("User", 14)} Participantes</button>` : ""}
           <span class="pan-spacer"></span>
-          <button class="btn-ghost" data-pan="back">Cancelar</button>
+          <button class="set-reset" data-pan="back">Cancelar</button>
           ${ro ? "" : `<button class="note-btn-save" data-pan="save-proj" data-id="${p.id}">${icon("Check", 14)} Salvar</button>`}
         </div>
       </div>`;

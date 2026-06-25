@@ -189,8 +189,7 @@ html[data-theme="escuro"] {
   --scroll-thumb-hover: #4a4d5c;
   --note-paper: #fbfaf4;
 }
-html[data-theme="escuro"] .note-m3,
-html[data-theme="escuro-suave"] .note-m3 {
+html[data-mode="dark"] .note-m3 {
   --m3-primary: #cbbdff;
   --m3-on-primary: #1c1130;
   --m3-primary-container: #3a2d63;
@@ -214,26 +213,16 @@ html[data-theme="escuro-suave"] .note-m3 {
 /* As notas-papel (.note-postit) mantêm o papel claro + texto escuro em
    qualquer tema (metáfora de post-it). Só o editor em modal precisa garantir
    texto escuro quando a nota tem cor de papel. */
-html[data-theme="escuro"] .note-editor,
-html[data-theme="escuro-suave"] .note-editor { background: var(--note-bg, #fbfaf4); }
-html[data-theme="escuro"] .note-editor .ne-title,
-html[data-theme="escuro"] .note-editor .ne-mount .ProseMirror,
-html[data-theme="escuro"] .note-editor .ne-fallback,
-html[data-theme="escuro"] .note-editor .ne-ck-text,
-html[data-theme="escuro"] .note-editor .ne-ck-new,
-html[data-theme="escuro"] .note-editor .ne-att-file a,
-html[data-theme="escuro"] .note-editor .ne-tags,
-html[data-theme="escuro-suave"] .note-editor .ne-title,
-html[data-theme="escuro-suave"] .note-editor .ne-mount .ProseMirror,
-html[data-theme="escuro-suave"] .note-editor .ne-fallback,
-html[data-theme="escuro-suave"] .note-editor .ne-ck-text,
-html[data-theme="escuro-suave"] .note-editor .ne-ck-new,
-html[data-theme="escuro-suave"] .note-editor .ne-att-file a,
-html[data-theme="escuro-suave"] .note-editor .ne-tags { color: #2a2418; }
-html[data-theme="escuro"] .note-editor .ne-title::placeholder,
-html[data-theme="escuro"] .note-editor .ne-tb,
-html[data-theme="escuro-suave"] .note-editor .ne-title::placeholder,
-html[data-theme="escuro-suave"] .note-editor .ne-tb { color: rgba(42, 36, 24, 0.6); }
+html[data-mode="dark"] .note-editor { background: var(--note-bg, #fbfaf4); }
+html[data-mode="dark"] .note-editor .ne-title,
+html[data-mode="dark"] .note-editor .ne-mount .ProseMirror,
+html[data-mode="dark"] .note-editor .ne-fallback,
+html[data-mode="dark"] .note-editor .ne-ck-text,
+html[data-mode="dark"] .note-editor .ne-ck-new,
+html[data-mode="dark"] .note-editor .ne-att-file a,
+html[data-mode="dark"] .note-editor .ne-tags { color: #2a2418; }
+html[data-mode="dark"] .note-editor .ne-title::placeholder,
+html[data-mode="dark"] .note-editor .ne-tb { color: rgba(42, 36, 24, 0.6); }
 
 /* ---- 2º tema escuro: Escuro suave (dark quente, baixo contraste — ref. Todoist) ---- */
 html[data-theme="escuro-suave"] {
@@ -286,6 +275,87 @@ html[data-theme="escuro-suave"] {
   --sh-md: 0 4px 14px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
   --sh-lg: 0 16px 48px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.4);
   --sh-pop: 0 10px 34px rgba(0, 0, 0, 0.55);
+}
+
+/* ============================================================
+   Temas adicionais (Fase B) — claros + escuros, incl. Ubuntu.
+   Claros herdam ink/sombras/tints de estado do :root; só variam
+   accent + superfícies/semânticos tingidos no matiz do tema.
+   ============================================================ */
+html[data-theme="oceano"] {
+  --accent: #0e7490; --accent-600: #0c6076; --accent-700: #0a4f61; --accent-soft: #e0f2f7; --accent-soft-2: #c7e8f0;
+  --bg: #eef4f6; --surface: #ffffff; --surface-2: #f5fafb; --surface-3: #e5eff2; --line: #d9e6ea; --line-strong: #c5d8de;
+  --hover: #e9f2f4; --hover-2: #ddebef; --pill: #e3eef1; --track: #d4e5ea;
+  --scroll-thumb: #c5d8de; --scroll-thumb-hover: #b0c8d0; --note-paper: #cffafe;
+}
+html[data-theme="floresta"] {
+  --accent: #2f8f4e; --accent-600: #277a43; --accent-700: #1f6537; --accent-soft: #e3f4e8; --accent-soft-2: #cdebd6;
+  --bg: #eef4ef; --surface: #ffffff; --surface-2: #f5faf6; --surface-3: #e6f0e8; --line: #dbe8de; --line-strong: #c8dacd;
+  --hover: #e9f3eb; --hover-2: #ddece1; --pill: #e4efe7; --track: #d5e7d9;
+  --scroll-thumb: #c8dacd; --scroll-thumb-hover: #b4cdbb; --note-paper: #dcfce7;
+}
+html[data-theme="rose"] {
+  --accent: #d6336c; --accent-600: #be2b60; --accent-700: #a02350; --accent-soft: #fce4ec; --accent-soft-2: #f9cfde;
+  --bg: #f8eef2; --surface: #ffffff; --surface-2: #fdf5f8; --surface-3: #f3e3ea; --line: #efdce3; --line-strong: #e6c9d4;
+  --hover: #f7ecf1; --hover-2: #f2dee7; --pill: #f6e8ee; --track: #efd9e2;
+  --scroll-thumb: #e6c9d4; --scroll-thumb-hover: #dab4c3; --note-paper: #ffe4ec;
+}
+/* Ubuntu (claro) — laranja oficial #DD4814 sobre neutros quentes (warm grey #AEA79F) */
+html[data-theme="ubuntu"] {
+  --accent: #dd4814; --accent-600: #c43f10; --accent-700: #a23408; --accent-soft: #fce5db; --accent-soft-2: #f8d2c2;
+  --bg: #f7f4f2; --surface: #ffffff; --surface-2: #fbf8f6; --surface-3: #f1ebe6; --line: #e8e1db; --line-strong: #d9cfc6;
+  --hover: #f3ede8; --hover-2: #ede5df; --pill: #efe8e2; --track: #e6dcd2;
+  --scroll-thumb: #d4cabf; --scroll-thumb-hover: #bfb2a4; --note-paper: #fff0e8;
+}
+
+/* Base comum dos temas escuros adicionais: tints de estado translúcidos,
+   sombras densas e on-accent/toast — idêntico ao "escuro". */
+html[data-theme="meia-noite"], html[data-theme="carbono"], html[data-theme="ametista"], html[data-theme="ubuntu-escuro"] {
+  color-scheme: dark;
+  --on-accent: #ffffff; --toast-ink: #eceef5;
+  --p-urgente-bg: rgba(224, 36, 43, 0.20); --p-alta-bg: rgba(228, 105, 11, 0.20);
+  --p-media-bg: rgba(37, 99, 235, 0.24); --p-baixa-bg: rgba(107, 113, 128, 0.22);
+  --s-pendente-bg: rgba(107, 113, 128, 0.22); --s-andamento-bg: rgba(79, 70, 229, 0.28);
+  --s-aguardando-bg: rgba(180, 115, 10, 0.24); --s-concluido-bg: rgba(21, 146, 78, 0.24);
+  --s-cancelado-bg: rgba(148, 152, 166, 0.20);
+  --sh-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sh-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --sh-md: 0 4px 14px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --sh-lg: 0 16px 48px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --sh-pop: 0 10px 34px rgba(0, 0, 0, 0.55);
+}
+html[data-theme="meia-noite"] {
+  --accent: #5b8def; --accent-600: #74a0f2; --accent-700: #aecbff; --accent-soft: #15294a; --accent-soft-2: #1f3a63;
+  --bg: #0e1422; --surface: #161d2e; --surface-2: #1c2438; --surface-3: #182032; --line: #28324a; --line-strong: #38445f;
+  --ink: #e7ecf5; --ink-2: #b0bad0; --ink-3: #7e8aa6; --ink-4: #56617d;
+  --hover: #1e2840; --hover-2: #243150; --pill: #212c46; --track: #243150;
+  --overlay: rgba(4, 8, 18, 0.64); --overlay-strong: rgba(4, 8, 18, 0.7); --glass: rgba(22, 29, 46, 0.82);
+  --toast-bg: #243150; --scroll-thumb: #38445f; --scroll-thumb-hover: #4a587a; --note-paper: #fbfaf4;
+}
+html[data-theme="carbono"] {
+  --accent: #e06c75; --accent-600: #e88089; --accent-700: #f0a9af; --accent-soft: #3a2326; --accent-soft-2: #4d2e32;
+  --bg: #131316; --surface: #1b1c20; --surface-2: #212327; --surface-3: #1e1f23; --line: #2e3036; --line-strong: #3d4047;
+  --ink: #eceef2; --ink-2: #b6b9c2; --ink-3: #888c98; --ink-4: #5e616e;
+  --hover: #25272c; --hover-2: #2b2d33; --pill: #292b31; --track: #2b2d33;
+  --overlay: rgba(6, 6, 8, 0.64); --overlay-strong: rgba(6, 6, 8, 0.7); --glass: rgba(27, 28, 32, 0.82);
+  --toast-bg: #2b2d33; --scroll-thumb: #3d4047; --scroll-thumb-hover: #4e515a; --note-paper: #faf7ef;
+}
+html[data-theme="ametista"] {
+  --accent: #b07ae6; --accent-600: #bd8eeb; --accent-700: #d6bdf5; --accent-soft: #2c2143; --accent-soft-2: #3a2c5e;
+  --bg: #14111c; --surface: #1d1928; --surface-2: #242031; --surface-3: #201c2c; --line: #322c44; --line-strong: #443c5a;
+  --ink: #ece8f5; --ink-2: #b8b2cb; --ink-3: #8a839e; --ink-4: #615a73;
+  --hover: #262035; --hover-2: #2d2640; --pill: #29233a; --track: #2d2640;
+  --overlay: rgba(8, 6, 14, 0.64); --overlay-strong: rgba(8, 6, 14, 0.7); --glass: rgba(29, 25, 40, 0.82);
+  --toast-bg: #2d2640; --scroll-thumb: #443c5a; --scroll-thumb-hover: #564c70; --note-paper: #faf6fe;
+}
+/* Ubuntu escuro — aubergine oficial #2C001E com accent laranja (#DD4814 clareado) */
+html[data-theme="ubuntu-escuro"] {
+  --accent: #ef5a28; --accent-600: #f37544; --accent-700: #f7a17e; --accent-soft: #4a1a2f; --accent-soft-2: #5e2438;
+  --bg: #2c001e; --surface: #3a1029; --surface-2: #431634; --surface-3: #371026; --line: #512a47; --line-strong: #5e2750;
+  --ink: #f3e9ef; --ink-2: #d4bccb; --ink-3: #a98ba1; --ink-4: #7c5d72;
+  --hover: #421633; --hover-2: #4c1d3c; --pill: #461937; --track: #4c1d3c;
+  --overlay: rgba(16, 0, 11, 0.64); --overlay-strong: rgba(16, 0, 11, 0.72); --glass: rgba(58, 16, 41, 0.82);
+  --toast-bg: #4c1d3c; --scroll-thumb: #5e2750; --scroll-thumb-hover: #77216f; --note-paper: #fbf6f9;
 }
 
 html { background: var(--bg); }
@@ -462,7 +532,7 @@ body { transition: background-color .25s ease, color .25s ease; }
   display: flex; align-items: center; gap: 7px;
   height: 38px; padding: 0 15px;
   border: none; border-radius: var(--r-md);
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: var(--on-accent);
   font-weight: 700; font-size: 13.5px;
   box-shadow: 0 4px 12px rgba(79,70,229,.26);
   transition: background .15s, transform .12s;
@@ -476,6 +546,11 @@ body { transition: background-color .25s ease, color .25s ease; }
   transition: background .12s, color .12s, border-color .12s;
 }
 .btn-ghost:hover { background: var(--surface-2); color: var(--ink); border-color: var(--ink-4); }
+/* foco acessível unificado dos botões (design system — Fase A) */
+.btn-primary:focus-visible, .btn-ghost:focus-visible, .btn-save:focus-visible,
+.note-btn-save:focus-visible, .note-btn-ghost:focus-visible, .set-reset:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
 
 /* View tabs */
 .c-head-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; }
@@ -612,7 +687,16 @@ body { transition: background-color .25s ease, color .25s ease; }
 @media (min-width: 640px) { .masonry-grid { columns: 2; } }
 @media (min-width: 1024px) { .masonry-grid { columns: 3; } }
 @media (min-width: 1440px) { .masonry-grid { columns: 4; } }
-.masonry-item { break-inside: avoid; margin-bottom: 16px; }
+/* padding-top reserva o espaço da fita (.note-tape, top:-8px) DENTRO da caixa do
+   item; sem isso, em layout multi-coluna a fita de cartões fora da 1ª coluna
+   transborda acima do item e o navegador a recorta ("cortada ao meio"). */
+.masonry-item { break-inside: avoid; padding-top: 8px; margin-bottom: 12px; }
+
+/* Tipografia das notas (Fase E) — ESCOPO EXCLUSIVO: cards em visualização.
+   Fonte e tamanho vêm de --note-font/--note-scale (definidos só quando o usuário
+   escolhe nas Configurações). Não afeta a edição (.note-postit.editing), os
+   modais de nota nem qualquer outra tela. */
+.note-postit:not(.editing) { font-family: var(--note-font, "Plus Jakarta Sans", system-ui, sans-serif); }
 
 .note-postit {
   position: relative; color: #1c1d29;
@@ -638,15 +722,15 @@ body { transition: background-color .25s ease, color .25s ease; }
 .note-postit:hover .note-del { opacity: 1; }
 .note-del:hover { background: rgba(224, 36, 43, .14); color: #e0242b; }
 
-.note-title { font-family: "Kalam", cursive; font-size: 19px; font-weight: 700; line-height: 1.25; margin: 6px 0 8px; word-break: break-word; }
-.note-body { font-family: "Kalam", cursive; font-size: 15.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: rgba(28, 29, 41, .82); }
+.note-title { font-family: inherit; font-size: calc(19px * var(--note-scale, 1)); font-weight: 700; line-height: 1.25; margin: 6px 0 8px; word-break: break-word; }
+.note-body { font-family: inherit; font-size: calc(15.5px * var(--note-scale, 1)); line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: rgba(28, 29, 41, .82); }
 .note-body.empty { color: rgba(28, 29, 41, .4); font-style: italic; }
 
 /* corpo renderizado (HTML sanitizado no card) + editor inline (contenteditable) */
 .note-body-rich { white-space: normal; max-height: 360px; overflow: hidden; }
 .note-body-edit { white-space: normal; word-break: break-word; outline: none; cursor: text; min-height: 40px; }
 .note-body-edit:empty:before { content: attr(data-ph); color: rgba(28, 29, 41, .4); font-style: italic; pointer-events: none; }
-.note-postit .note-body-edit { background: rgba(255, 255, 255, .5); color: #1c1d29; font-family: "Kalam", cursive; font-size: 15px; line-height: 1.5; padding: 8px 10px; border-radius: 6px; min-height: 96px; max-height: 320px; overflow-y: auto; }
+.note-postit .note-body-edit { background: rgba(255, 255, 255, .5); color: #1c1d29; font-family: inherit; font-size: 15px; line-height: 1.5; padding: 8px 10px; border-radius: 6px; min-height: 96px; max-height: 320px; overflow-y: auto; }
 .note-postit .note-body-edit:focus { box-shadow: 0 0 0 2px rgba(0, 0, 0, .12); }
 /* estilos dos elementos do conteúdo (card + contenteditable) */
 .note-body-rich > :first-child, .note-body-edit > :first-child { margin-top: 0; }
@@ -655,6 +739,11 @@ body { transition: background-color .25s ease, color .25s ease; }
 .note-body-rich h1, .note-body-edit h1 { font-size: 18px; }
 .note-body-rich h2, .note-body-edit h2 { font-size: 16.5px; }
 .note-body-rich h3, .note-body-edit h3 { font-size: 15.5px; }
+/* escala da tipografia das notas em visualização (--note-scale); a edição
+   mantém os tamanhos fixos acima, sem reagir à preferência do usuário */
+.note-body-rich h1 { font-size: calc(18px * var(--note-scale, 1)); }
+.note-body-rich h2 { font-size: calc(16.5px * var(--note-scale, 1)); }
+.note-body-rich h3 { font-size: calc(15.5px * var(--note-scale, 1)); }
 .note-body-rich h1, .note-body-rich h2, .note-body-rich h3, .note-body-rich h4, .note-body-rich h5, .note-body-rich h6,
 .note-body-edit h1, .note-body-edit h2, .note-body-edit h3, .note-body-edit h4, .note-body-edit h5, .note-body-edit h6 { font-weight: 700; line-height: 1.25; margin: 6px 0 4px; }
 .note-body-rich ul, .note-body-rich ol, .note-body-edit ul, .note-body-edit ol { margin: 4px 0; padding-left: 20px; }
@@ -675,12 +764,12 @@ body { transition: background-color .25s ease, color .25s ease; }
 .note-body-rich ul[data-type="taskList"] p, .note-body-edit ul[data-type="taskList"] p { margin: 0; }
 
 .note-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.note-tag { font-size: 11px; font-weight: 700; color: rgba(28, 29, 41, .55); background: rgba(255, 255, 255, .45); padding: 2px 8px; border-radius: 999px; }
+.note-tag { font-size: calc(11px * var(--note-scale, 1)); font-weight: 700; color: rgba(28, 29, 41, .55); background: rgba(255, 255, 255, .45); padding: 2px 8px; border-radius: 999px; }
 
 /* modo edição */
 .note-title-input, .note-body-input, .note-tags-input {
   border: none; width: 100%; color: #1c1d29; background: rgba(255, 255, 255, .5);
-  padding: 8px 10px; border-radius: 6px; outline: none; font-family: "Kalam", cursive;
+  padding: 8px 10px; border-radius: 6px; outline: none; font-family: inherit;
 }
 .note-title-input:focus, .note-body-input:focus, .note-tags-input:focus { box-shadow: 0 0 0 2px rgba(0, 0, 0, .12); }
 .note-title-input { font-size: 18px; font-weight: 700; }
@@ -690,9 +779,9 @@ body { transition: background-color .25s ease, color .25s ease; }
 .note-color-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); cursor: pointer; padding: 0; }
 .note-color-dot.on { border-color: #1c1d29; box-shadow: 0 0 0 2px rgba(28, 29, 41, .25); }
 .note-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
-.note-btn-ghost { border: none; background: rgba(0, 0, 0, .06); color: #565869; font-family: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+.note-btn-ghost { border: none; background: rgba(0, 0, 0, .06); color: var(--ink-2); font-family: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 12px; border-radius: var(--r-sm); cursor: pointer; }
 .note-btn-ghost:hover { background: rgba(0, 0, 0, .1); }
-.note-btn-save { border: none; background: var(--accent); color: #fff; font-family: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 13px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.note-btn-save { border: none; background: var(--accent); color: var(--on-accent); font-family: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 13px; border-radius: var(--r-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 .note-btn-save:hover { background: var(--accent-600); }
 .note-btn-danger { background: #ba1a1a; }
 .note-btn-danger:hover { background: #93000a; }
@@ -796,7 +885,7 @@ body { transition: background-color .25s ease, color .25s ease; }
 
 /* ---- alternância grid/lista ---- */
 .note-list { display: flex; flex-direction: column; gap: 10px; }
-.note-list .masonry-item { break-inside: auto; margin-bottom: 0; }
+.note-list .masonry-item { break-inside: auto; padding-top: 0; margin-bottom: 0; }
 .note-list .note-postit { transform: none !important; }
 .note-list .note-postit:hover { transform: translateY(-1px) !important; }
 
@@ -1352,7 +1441,7 @@ body { transition: background-color .25s ease, color .25s ease; }
 
 /* modal footer */
 .modal-foot { display: flex; align-items: center; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--line); background: var(--surface); }
-.btn-save { height: 40px; padding: 0 20px; border: none; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 800; font-size: 13.5px; box-shadow: 0 4px 12px rgba(79,70,229,.26); transition: background .15s, transform .12s; }
+.btn-save { height: 40px; padding: 0 20px; border: none; border-radius: var(--r-md); background: var(--accent); color: var(--on-accent); font-weight: 800; font-size: 13.5px; box-shadow: 0 4px 12px rgba(79,70,229,.26); transition: background .15s, transform .12s; }
 .btn-save:hover { background: var(--accent-600); transform: translateY(-1px); }
 .btn-cancel { height: 40px; padding: 0 18px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--ink-2); font-weight: 700; font-size: 13.5px; }
 .btn-cancel:hover { background: var(--surface-2); color: var(--ink); }
@@ -1495,6 +1584,37 @@ body.resizing.cmd-bottom { cursor: row-resize; }
 
 /* seletor de tema (cards com pré-visualização) */
 .cfg-theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
+/* Esquema de cores (Fase C) */
+.cfg-scheme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.cfg-scheme { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1.5px solid var(--line-strong); border-radius: 999px; background: var(--surface); cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); transition: border-color .14s, color .14s, background .14s; }
+.cfg-scheme:hover { color: var(--ink); border-color: var(--ink-4); }
+.cfg-scheme.on { border-color: var(--accent); color: var(--accent-700); background: var(--accent-soft); }
+.cfg-scheme-dot { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+.cfg-scheme-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cfg-scheme:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Personalização manual de cor (Fase D) */
+.cfg-custom-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cfg-color { width: 46px; height: 38px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--surface); cursor: pointer; }
+.cfg-custom-hex { font-size: 13px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+/* Cores das notas (Fase D) */
+.cfg-note-colors { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.cfg-note-opt { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border: 1.5px solid var(--line-strong); border-radius: 999px; background: var(--surface); cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.cfg-note-opt:hover { color: var(--ink); border-color: var(--ink-4); }
+.cfg-note-opt.on, .cfg-note-swatchbtn.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.cfg-note-swatchbtn { padding: 3px; border: 1.5px solid var(--line-strong); border-radius: 50%; background: var(--surface); cursor: pointer; line-height: 0; }
+.cfg-note-swatch { display: inline-block; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); }
+.cfg-note-varied { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: conic-gradient(#fef9c3, #fbcfe8, #bbf7d0, #bfdbfe, #e9d5ff, #fed7aa, #fef9c3); box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); }
+.cfg-note-opt:focus-visible, .cfg-note-swatchbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Tipografia (Fase E) */
+.cfg-font-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.cfg-font { padding: 11px 12px; border: 1.5px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface); cursor: pointer; font-size: 15px; color: var(--ink); text-align: left; transition: border-color .14s, box-shadow .14s; }
+.cfg-font:hover { border-color: var(--ink-4); }
+.cfg-font.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.cfg-size-row { display: inline-flex; gap: 2px; background: var(--hover-2); padding: 3px; border-radius: 11px; margin-bottom: 12px; }
+.cfg-size { border: none; background: none; height: 32px; padding: 0 14px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.cfg-size:hover { color: var(--ink); }
+.cfg-size.on { background: var(--surface); color: var(--accent-700); box-shadow: var(--sh-sm); }
+.cfg-font:focus-visible, .cfg-size:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .cfg-theme { display: flex; flex-direction: column; padding: 0; border: 1.5px solid var(--line-strong); border-radius: 14px; background: var(--surface); overflow: hidden; cursor: pointer; text-align: left; transition: border-color .14s, box-shadow .14s, transform .12s; position: relative; font-family: inherit; }
 .cfg-theme:hover { border-color: var(--ink-4); transform: translateY(-1px); }
 .cfg-theme.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -1632,8 +1752,8 @@ textarea.imp-in { resize: vertical; line-height: 1.5; }
 .pan-counts .late { color: var(--p-urgente); }
 .pan-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 50px 20px; color: var(--ink-3); text-align: center; }
 .pan-empty svg { color: var(--ink-4); }
-/* edição */
-.pan-edit { display: flex; flex-direction: column; gap: 14px; max-width: 720px; }
+/* edição (container da página — classe distinta do botão .pan-edit do card) */
+.pan-form { display: flex; flex-direction: column; gap: 14px; max-width: 720px; }
 .pan-ro { padding: 9px 12px; border-radius: 9px; background: var(--hover); color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
 .pan-edit-prog { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
 .pan-edit-prog .pan-bar { width: 160px; }
@@ -1797,6 +1917,10 @@ textarea.pan-in { resize: vertical; line-height: 1.5; }
 .m-rel-del { border: none; background: none; color: var(--ink-4); width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
 .m-rel-del:hover { background: var(--p-urgente-bg); color: var(--p-urgente); }
 .m-rel-empty { font-size: 12.5px; color: var(--ink-3); margin-bottom: 8px; }
+.m-att-hint { font-size: 12.5px; color: var(--ink-3); }
+/* botão Salvar/Criar em estado "ocupado" (durante o envio) */
+.btn-save[aria-busy="true"], .btn-primary[aria-busy="true"], .sb-new[aria-busy="true"] { opacity: .7; cursor: progress; }
+button[aria-busy="true"] { pointer-events: none; }
 .m-rel-add { display: flex; gap: 6px; flex-wrap: wrap; }
 .m-rel-add input { flex: 1; min-width: 120px; height: 34px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 0 11px; font-family: inherit; font-size: 13px; color: var(--ink); background: var(--surface); outline: none; }
 .m-rel-add input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-@php($theme = in_array(($boot['prefs']['theme'] ?? 'claro'), ['claro', 'sepia', 'escuro', 'escuro-suave'], true) ? ($boot['prefs']['theme'] ?? 'claro') : 'claro')
-<html lang="pt-BR" data-theme="{{ $theme }}">
+@php($theme = in_array(($boot['prefs']['theme'] ?? 'claro'), ['claro', 'sepia', 'oceano', 'floresta', 'rose', 'ubuntu', 'escuro', 'escuro-suave', 'meia-noite', 'carbono', 'ametista', 'ubuntu-escuro'], true) ? ($boot['prefs']['theme'] ?? 'claro') : 'claro')
+@php($mode = in_array($theme, ['escuro', 'escuro-suave', 'meia-noite', 'carbono', 'ametista', 'ubuntu-escuro'], true) ? 'dark' : 'light')
+<html lang="pt-BR" data-theme="{{ $theme }}" data-mode="{{ $mode }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -67,6 +68,7 @@
   <script src="{{ asset('app/quick-edit.js') }}"></script>
   <script src="{{ asset('app/imports.js') }}"></script>
   <script src="{{ asset('app/panel.js') }}"></script>
+  <script src="{{ asset('app/theme-color.js') }}"></script>
   <script src="{{ asset('app/main.js') }}"></script>
 </body>
 </html>

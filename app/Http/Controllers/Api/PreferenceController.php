@@ -12,7 +12,12 @@ class PreferenceController extends Controller
     public function update(Request $request)
     {
         $data = $request->validate([
-            'theme'           => 'sometimes|in:claro,sepia,escuro,escuro-suave',
+            'theme'           => 'sometimes|in:claro,sepia,oceano,floresta,rose,ubuntu,escuro,escuro-suave,meia-noite,carbono,ametista,ubuntu-escuro',
+            'colorScheme'     => 'sometimes|nullable|string|max:30',
+            'customAccent'    => ['sometimes', 'nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'noteDefaultColor' => 'sometimes|nullable|string|max:16',
+            'fontFamily'      => 'sometimes|nullable|in:,system,inter,serif,kalam,mono',
+            'fontScale'       => 'sometimes|numeric|min:0.8|max:1.3',
             'chatPosition'    => 'sometimes|in:side,bottom',
             'chatWidth'       => 'sometimes|integer|min:300|max:640',
             'chatHeight'      => 'sometimes|integer|min:200|max:720',

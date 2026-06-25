@@ -200,5 +200,28 @@
     return (prefs.assistantName && prefs.assistantName.trim()) || "Assistente";
   }
 
-  window.UI = { esc, stripHtml, sanitizeHtml, priorityBadge, statusBadge, duePill, checklistMini, commentMini, recurMini, remindMini, labelChips, projectName, liveSection, sectionTitle, initialsOf, avatarHTML, taskPeople, peopleDatalistHTML, respAvatarHTML, ASSISTANT_AVATARS, assistantAvatarUrl, assistantName };
+  /**
+   * Protege um botão de ação contra cliques repetidos enquanto a operação corre.
+   * Desabilita o botão, exibe um rótulo de carregamento (ex.: "Abrindo…") e o
+   * reabilita ao concluir OU em caso de erro. Cliques durante a execução são
+   * ignorados (evita envios/criações duplicadas). É por elemento/instância — não
+   * usa estado global, então não interfere na UI de outros usuários/abas.
+   * @param {HTMLElement} el  botão clicado
+   * @param {Function} fn     função que dispara a ação (idealmente retorna Promise)
+   * @param {string} [busyLabel] rótulo temporário enquanto carrega
+   */
+  function busyGuard(el, fn, busyLabel) {
+    if (!el) return Promise.resolve(fn && fn());
+    if (el.dataset.busy === "1") return Promise.resolve();      // já em andamento → ignora
+    el.dataset.busy = "1";
+    const html = el.innerHTML, wasDisabled = el.disabled;
+    el.disabled = true; el.setAttribute("aria-busy", "true");
+    if (busyLabel != null) el.textContent = busyLabel;
+    const done = () => { delete el.dataset.busy; el.disabled = wasDisabled; el.removeAttribute("aria-busy"); el.innerHTML = html; };
+    let r;
+    try { r = fn(); } catch (e) { done(); throw e; }
+    return Promise.resolve(r).then((v) => { done(); return v; }, (e) => { done(); throw e; });
+  }
+
+  window.UI = { esc, stripHtml, sanitizeHtml, priorityBadge, statusBadge, duePill, checklistMini, commentMini, recurMini, remindMini, labelChips, projectName, liveSection, sectionTitle, initialsOf, avatarHTML, taskPeople, peopleDatalistHTML, respAvatarHTML, ASSISTANT_AVATARS, assistantAvatarUrl, assistantName, busyGuard };
 })();

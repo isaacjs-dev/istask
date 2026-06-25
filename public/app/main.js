@@ -24,7 +24,7 @@
     conversations: (boot.conversations || []).slice(),
     projects: (boot.projects || []).slice(),
     activeConversationId: boot.activeConversationId || null,
-    prefs: Object.assign({ theme: "claro", chatPosition: "side", chatWidth: 372, chatHeight: 320, chatCollapsed: false, assistantName: "Assistente", assistantAvatar: "default" }, boot.prefs || {}),
+    prefs: Object.assign({ theme: "claro", colorScheme: "", customAccent: "", noteDefaultColor: "", fontFamily: "", fontScale: 1, chatPosition: "side", chatWidth: 372, chatHeight: 320, chatCollapsed: false, assistantName: "Assistente", assistantAvatar: "default" }, boot.prefs || {}),
     page: "tarefas",
     view: "list",
     notesView: "active",
@@ -105,10 +105,19 @@
   }
 
   // ---------- PREFERÊNCIAS / LAYOUT ----------
-  const THEMES = ["claro", "sepia", "escuro", "escuro-suave"];
+  const THEMES = ["claro", "sepia", "oceano", "floresta", "rose", "ubuntu", "escuro", "escuro-suave", "meia-noite", "carbono", "ametista", "ubuntu-escuro"];
+  const DARK_THEMES = ["escuro", "escuro-suave", "meia-noite", "carbono", "ametista", "ubuntu-escuro"];
   function applyPrefs() {
     const p = window.state.prefs;
-    document.documentElement.dataset.theme = THEMES.includes(p.theme) ? p.theme : "claro";
+    const theme = THEMES.includes(p.theme) ? p.theme : "claro";
+    const mode = DARK_THEMES.includes(theme) ? "dark" : "light";
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.mode = mode;
+    // esquema de cor (sobrepõe a família de accent do tema) ou cor principal custom
+    if (window.ThemeColor) window.ThemeColor.apply(p.colorScheme, mode, p.customAccent);
+    // tipografia das notas (fonte + escala) — escopo exclusivo aos cards em
+    // visualização via --note-font/--note-scale; não afeta o resto do sistema
+    if (window.ThemeColor) window.ThemeColor.applyFont(p.fontFamily, p.fontScale);
     document.body.classList.toggle("cmd-bottom", p.chatPosition === "bottom");
     document.body.classList.toggle("cmd-side", p.chatPosition !== "bottom");
     document.body.classList.toggle("chat-collapsed", !!p.chatCollapsed);
@@ -224,7 +233,47 @@
       checklist: (updated.checklist || []).map((c) => ({ id: c.id, text: c.text, done: !!c.done, assignee: c.assignee || null, priority: c.priority || null, due: c.due || null })),
       comments: (updated.comments || []).map((c) => ({ id: c.id, text: c.text, author: c.author, initials: c.initials, color: c.color, ai: !!c.ai })),
     };
-    Api.saveTask(updated.id, payload).then((res) => { applyTaskResult(res); render(); toast("Tarefa atualizada"); }).catch(apiError);
+    // Devolve a promessa (resolve true/false) para o chamador exibir estado e tratar erro.
+    return Api.saveTask(updated.id, payload)
+      .then((res) => { applyTaskResult(res); render(); toast("Tarefa atualizada"); return true; })
+      .catch((e) => { apiError(e); return false; });
+  }
+  // Token de idempotência por rascunho (UUID v4) — evita tarefas duplicadas no servidor.
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0; return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
+  // Cria a tarefa no banco a partir do rascunho do modal (só no clique em "Criar").
+  // Idempotente: o mesmo client_token nunca gera duas tarefas. Resolve com a tarefa criada.
+  function createTaskFromDraft(d) {
+    const payload = {
+      client_token: d.clientToken,
+      title: d.title || "Nova tarefa",
+      description: d.description || "",
+      status: d.status || "pendente",
+      priority: d.priority || "media",
+      project: d.project || "geral",
+      due: d.due || null,
+      responsible: d.responsible || "Você",
+      section: d.section || d._section || null,
+      startDate: d.startDate || null,
+      estimatedMinutes: (d.estimatedMinutes === "" || d.estimatedMinutes == null) ? null : +d.estimatedMinutes,
+      recurrence: d.recurrence || "none",
+      remindAt: d.remindAt || null,
+      labelIds: (d.labelIds || []).map((x) => +x),
+      checklist: (d.checklist || []).map((c) => ({ id: c.id, text: c.text, done: !!c.done, assignee: c.assignee || null, priority: c.priority || null, due: c.due || null })),
+      comments: (d.comments || []).map((c) => ({ text: c.text, author: c.author, initials: c.initials, color: c.color, ai: !!c.ai })),
+    };
+    return Api.createTask(payload).then((res) => {
+      const t = res && res.task ? res.task : res;
+      if (t && t.id) {
+        window.state.tasks = [t, ...window.state.tasks.filter((x) => String(x.id) !== String(t.id))];
+        render(); flash(t.id);
+      }
+      return t;
+    });
   }
   function deleteTask(id) {
     removeTask(id); render();
@@ -245,9 +294,26 @@
     const first = projects.find((p) => String(p.workspaceId) === String(s.activeWorkspaceId) && !p.sharedSolo);
     return first ? first.slug : null;
   }
+  // "Nova tarefa": abre o modal INSTANTANEAMENTE com um rascunho em memória.
+  // Nada é gravado no banco aqui — a tarefa só nasce ao clicar em "Criar tarefa".
+  // Singleton: se já há um modal aberto, ignora o clique (nunca abre um 2º modal).
   function addBlankTask() {
-    const project = contextProjectSlug();
-    Api.createTask(project ? { project } : {}).then((task) => { window.state.tasks = [task, ...window.state.tasks]; render(); window.Modal.open(task.id); }).catch(apiError);
+    if (!window.Modal || !window.Modal.openDraft) return;
+    if (window.Modal.isOpen && window.Modal.isOpen()) return;
+    const slug = contextProjectSlug();
+    const proj = (window.state.projects || []).find((p) => p.slug === slug);
+    window.Modal.openDraft({
+      id: "new:" + uuid(),          // id temporário (não persistido)
+      __isNew: true,
+      clientToken: uuid(),          // chave de idempotência no servidor
+      title: "", description: "", status: "pendente", priority: "media",
+      project: slug || "geral",
+      workspaceId: proj ? proj.workspaceId : window.state.activeWorkspaceId,
+      due: null, responsible: (TD.me && TD.me.name) || "Você",
+      startDate: null, estimatedMinutes: null, recurrence: "none", remindAt: null,
+      labelIds: [], labels: [], checklist: [], comments: [], attachments: [],
+      links: [], relations: [], history: [], permission: "edit",
+    });
   }
   function duplicateTask(id) {
     Api.duplicateTask(id).then((task) => { window.state.tasks = [task, ...window.state.tasks]; render(); flash(task.id); toast("Tarefa duplicada"); }).catch(apiError);
@@ -516,6 +582,12 @@
       else if (act === "notif-read-all") markAllNotifRead();
       else if (act === "cfg-nav") { window.state.configSection = el.dataset.section; renderBody(); }
       else if (act === "set-theme") { savePrefs({ theme: el.dataset.theme }); refreshSettings(); }
+      else if (act === "set-scheme") { savePrefs({ colorScheme: el.dataset.scheme || "" }); refreshSettings(); }
+      else if (act === "clear-custom-accent") { savePrefs({ customAccent: "" }); refreshSettings(); }
+      else if (act === "set-note-color") { savePrefs({ noteDefaultColor: el.dataset.color || "" }); render(); }
+      else if (act === "set-font") { savePrefs({ fontFamily: el.dataset.font || "" }); refreshSettings(); }
+      else if (act === "set-fontscale") { savePrefs({ fontScale: +el.dataset.scale || 1 }); refreshSettings(); }
+      else if (act === "reset-typography") { savePrefs({ fontFamily: "", fontScale: 1 }); refreshSettings(); }
       else if (act === "set-ws-grouping") { savePrefs({ workspaceGrouping: el.dataset.value }); render(); }
       else if (act === "set-nb-grouping") { savePrefs({ notebookGrouping: el.dataset.value }); render(); }
       else if (act === "set-team") { savePrefs({ teamActivityEnabled: el.dataset.value === "on" }); render(); }
@@ -564,6 +636,13 @@
       if (wEnd && wEnd.value) savePrefs({ workdayEnd: wEnd.value });
       const fileEl = e.target.closest(".set-avatar-file");
       if (fileEl && fileEl.files && fileEl.files[0]) uploadAvatar(fileEl.files[0]);
+      const colorEl = e.target.closest(".cfg-color");
+      if (colorEl) { savePrefs({ customAccent: colorEl.value }); refreshSettings(); }
+    });
+    // preview ao vivo da cor principal personalizada (sem salvar a cada quadro)
+    document.getElementById("root").addEventListener("input", (e) => {
+      const c = e.target.closest(".cfg-color");
+      if (c && window.ThemeColor) window.ThemeColor.apply(null, document.documentElement.dataset.mode, c.value);
     });
 
     // drag & drop (kanban)
@@ -620,7 +699,10 @@
     const form = document.createElement("form");
     form.method = "POST";
     form.action = base + "/logout";
-    const csrf = (TD.boot && TD.boot.csrf) || "";
+    // Token atual da página (meta) — mais fresco que o do boot; em sessão expirada,
+    // o servidor trata o 419 e redireciona ao login (sem página de erro).
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    const csrf = (meta && meta.getAttribute("content")) || (TD.boot && TD.boot.csrf) || "";
     form.innerHTML = `<input type="hidden" name="_token" value="${csrf}">`;
     document.body.appendChild(form);
     form.submit();
@@ -715,7 +797,7 @@
     render();
   }
 
-  window.App = { saveTask, deleteTask, duplicateTask, archiveTask, render, toast, applyPayload };
+  window.App = { saveTask, createTaskFromDraft, deleteTask, duplicateTask, archiveTask, render, toast, applyPayload };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })();

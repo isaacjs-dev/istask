@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Project;
+use App\Models\Workspace as WorkspaceModel;
 use App\Services\Commands\ActionRecorder;
+use App\Support\Access;
 use App\Support\TaskRepository;
 use App\Support\Workspace;
 use Illuminate\Http\Request;
@@ -32,7 +34,9 @@ class ProjectController extends Controller
 
         $workspaceId = $data['workspace_id'] ?? null;
         if ($workspaceId) {
-            abort_unless($user->ownedWorkspaces()->whereKey($workspaceId)->exists(), 404);
+            // permite criar em área própria OU compartilhada comigo com permissão de edição
+            $ws = WorkspaceModel::find($workspaceId);
+            abort_unless($ws && Access::can(Access::workspacePermission($user, $ws), 'edit'), 404);
         } else {
             $workspaceId = optional($user->ownedWorkspaces()->orderBy('position')->first())->id;
         }

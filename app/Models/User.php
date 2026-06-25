@@ -86,6 +86,11 @@ class User extends Authenticatable
     {
         $defaults = [
             'theme' => 'claro',
+            'colorScheme' => '',
+            'customAccent' => '',
+            'noteDefaultColor' => '',
+            'fontFamily' => '',
+            'fontScale' => 1,
             'chatPosition' => 'side',
             'chatWidth' => 372,
             'chatHeight' => 320,

@@ -14,7 +14,7 @@ class Task extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'project_id', 'title', 'description', 'status', 'priority',
+        'project_id', 'client_token', 'title', 'description', 'status', 'priority',
         'section', 'due_date', 'responsible', 'position',
         'completed_at',
         // Paridade B2: datas avançadas, recorrência, lembrete, arquivamento

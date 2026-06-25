@@ -8,12 +8,13 @@ use Tests\TestCase;
 class ExampleTest extends TestCase
 {
     /**
-     * A raiz é protegida por auth: visitante é redirecionado ao login.
+     * A raiz é a landing pública: visitante vê a página inicial (não é redirecionado).
      */
-    public function test_guest_is_redirected_to_login(): void
+    public function test_guest_sees_public_landing_at_root(): void
     {
         $response = $this->get('/');
 
-        $response->assertRedirect('/login');
+        $response->assertOk();
+        $response->assertSee('Começar grátis');
     }
 }

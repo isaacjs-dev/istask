@@ -632,8 +632,16 @@
   const THEME_OPTS = [
     { id: "claro", label: "Claro", sub: "Padrão", bg: "#f6f7fb", surface: "#ffffff", accent: "#4f46e5", ink: "#1c1d29", line: "#eaeaf0" },
     { id: "sepia", label: "Sépia", sub: "Claro quente", bg: "#f3ead9", surface: "#fffaf1", accent: "#c0641b", ink: "#36291a", line: "#e8dcc6" },
+    { id: "oceano", label: "Oceano", sub: "Azul-petróleo", bg: "#eef4f6", surface: "#ffffff", accent: "#0e7490", ink: "#1c1d29", line: "#d9e6ea" },
+    { id: "floresta", label: "Floresta", sub: "Verde", bg: "#eef4ef", surface: "#ffffff", accent: "#2f8f4e", ink: "#1c1d29", line: "#dbe8de" },
+    { id: "rose", label: "Rosé", sub: "Rosa quente", bg: "#f8eef2", surface: "#ffffff", accent: "#d6336c", ink: "#1c1d29", line: "#efdce3" },
+    { id: "ubuntu", label: "Ubuntu", sub: "Laranja quente", bg: "#f7f4f2", surface: "#ffffff", accent: "#dd4814", ink: "#1c1d29", line: "#e8e1db" },
     { id: "escuro", label: "Escuro", sub: "Dark mode", bg: "#15161c", surface: "#23252f", accent: "#6d63ff", ink: "#eceef5", line: "#2c2e39" },
     { id: "escuro-suave", label: "Escuro suave", sub: "Dark quente", bg: "#1b1a18", surface: "#242220", accent: "#7c74ff", ink: "#ece8e1", line: "#36332f" },
+    { id: "meia-noite", label: "Meia-noite", sub: "Azul profundo", bg: "#0e1422", surface: "#161d2e", accent: "#5b8def", ink: "#e7ecf5", line: "#28324a" },
+    { id: "carbono", label: "Carbono", sub: "Grafite", bg: "#131316", surface: "#1b1c20", accent: "#e06c75", ink: "#eceef2", line: "#2e3036" },
+    { id: "ametista", label: "Ametista", sub: "Roxo escuro", bg: "#14111c", surface: "#1d1928", accent: "#b07ae6", ink: "#ece8f5", line: "#322c44" },
+    { id: "ubuntu-escuro", label: "Ubuntu escuro", sub: "Aubergine", bg: "#2c001e", surface: "#3a1029", accent: "#ef5a28", ink: "#f3e9ef", line: "#5e2750" },
   ];
 
   function themeCardHTML(t, current) {
@@ -660,6 +668,15 @@
     const base = window.__BASE__ || "";
     const pos = prefs.chatPosition || "side";
     const theme = THEME_OPTS.some((t) => t.id === prefs.theme) ? prefs.theme : "claro";
+    const scheme = prefs.colorScheme || "";
+    const customAccent = prefs.customAccent || "";
+    const schemeBase = (window.ThemeColor && (window.ThemeColor.SCHEMES.find((s) => s.id === scheme) || {}).base) || "#4f46e5";
+    const noteDefault = prefs.noteDefaultColor || "";
+    const noteCOLORS = (window.Notes && window.Notes.COLORS) || {};
+    const notePALETTE = (window.Notes && window.Notes.PALETTE) || [];
+    const fontFamily = prefs.fontFamily || "";
+    const fontScale = +prefs.fontScale || 1;
+    const FONTS = (window.ThemeColor && window.ThemeColor.FONTS) || [];
     const opt = (id, label, sub, ic) => `
       <button class="set-opt${pos === id ? " on" : ""}" data-act="set-pos" data-pos="${id}" aria-pressed="${pos === id}">
         <span class="set-opt-ic">${icon(ic, 18)}</span>
@@ -681,6 +698,48 @@
           <div class="set-block-label">Tema</div>
           <p class="set-hint">Escolha a aparência do aplicativo. A preferência fica salva e é aplicada nas próximas sessões.</p>
           <div class="cfg-theme-grid">${THEME_OPTS.map((t) => themeCardHTML(t, theme)).join("")}</div>
+        </div>
+        <div class="set-block">
+          <div class="set-block-label">Esquema de cores</div>
+          <p class="set-hint">Define a cor principal e todas as cores derivadas dela, dentro do tema selecionado.</p>
+          <div class="cfg-scheme-grid">
+            ${(window.ThemeColor ? window.ThemeColor.SCHEMES : []).map((s) => `
+              <button class="cfg-scheme${scheme === s.id ? " on" : ""}" data-act="set-scheme" data-scheme="${s.id}" title="${s.name}" aria-pressed="${scheme === s.id}">
+                <span class="cfg-scheme-dot" style="background:${s.base}"></span>
+                <span class="cfg-scheme-name">${s.name}</span>
+              </button>`).join("")}
+          </div>
+          <button class="set-reset" data-act="set-scheme" data-scheme="" aria-pressed="${scheme === ""}">${icon("Sparkles", 14)} Usar cores padrão do tema</button>
+        </div>
+        <div class="set-block">
+          <div class="set-block-label">Cor principal personalizada</div>
+          <p class="set-hint">Escolha manualmente a cor principal; as variações (hover, foco, ativo, etc.) são derivadas automaticamente, mantendo o contraste. Sobrepõe o esquema acima.</p>
+          <div class="cfg-custom-row">
+            <input type="color" class="cfg-color" value="${customAccent || schemeBase}" aria-label="Cor principal">
+            <span class="cfg-custom-hex">${customAccent ? customAccent.toUpperCase() : "Automática (esquema/tema)"}</span>
+            ${customAccent ? `<button class="set-reset" data-act="clear-custom-accent">Limpar</button>` : ""}
+          </div>
+        </div>
+        <div class="set-block">
+          <div class="set-block-label">Cores das notas</div>
+          <p class="set-hint">Cor padrão das notas sem cor própria. "Variadas" mantém uma cor por nota; "Seguir o tema" usa a cor principal.</p>
+          <div class="cfg-note-colors">
+            <button class="cfg-note-opt${noteDefault === "" ? " on" : ""}" data-act="set-note-color" data-color="" title="Variadas"><span class="cfg-note-varied"></span> Variadas</button>
+            <button class="cfg-note-opt${noteDefault === "accent" ? " on" : ""}" data-act="set-note-color" data-color="accent" title="Seguir o tema"><span class="cfg-note-swatch" style="background:var(--accent-soft)"></span> Seguir o tema</button>
+            ${notePALETTE.map((c) => `<button class="cfg-note-swatchbtn${noteDefault === c ? " on" : ""}" data-act="set-note-color" data-color="${c}" title="${c}"><span class="cfg-note-swatch" style="background:${noteCOLORS[c]}"></span></button>`).join("")}
+          </div>
+        </div>
+        <div class="set-block">
+          <div class="set-block-label">Tipografia</div>
+          <p class="set-hint">Fonte e tamanho aplicados às notas no modo de visualização (mural). Não altera a edição das notas nem o restante do sistema.</p>
+          <div class="cfg-font-grid">
+            ${FONTS.map((f) => `<button class="cfg-font${fontFamily === f.id ? " on" : ""}" data-act="set-font" data-font="${f.id}" style="font-family:${f.stack}">${f.name}</button>`).join("")}
+          </div>
+          <div class="set-sub-label">Tamanho</div>
+          <div class="cfg-size-row">
+            ${[["0.9", "Pequeno"], ["1", "Padrão"], ["1.08", "Grande"], ["1.16", "Maior"]].map(([v, l]) => `<button class="cfg-size${Math.abs(fontScale - (+v)) < 0.001 ? " on" : ""}" data-act="set-fontscale" data-scale="${v}">${l}</button>`).join("")}
+          </div>
+          <button class="set-reset" data-act="reset-typography">${icon("Sparkles", 14)} Restaurar tipografia padrão</button>
         </div>
         <div class="set-block">
           <div class="set-block-label">Posição da barra de comandos</div>

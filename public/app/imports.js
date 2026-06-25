@@ -59,7 +59,7 @@
     const prLines = Object.keys(PRIORITY).map((k) => `${k} (${PRIORITY[k].label})`).join(", ");
     const lblLines = labels().map((l) => l.name).join(", ") || "(nenhuma)";
     const ppl = allPeople().map((p) => p.name).join(", ") || "(nenhuma)";
-    return `Você é um assistente que extrai TAREFAS da transcrição de um ou mais áudios e gera um JSON para importar no sistema "TaskAI Manager".
+    return `Você é um assistente que extrai TAREFAS da transcrição de um ou mais áudios e gera um JSON para importar no sistema "Tarefas Chat".
 
 REGRAS
 - Leia a transcrição e identifique TODAS as tarefas mencionadas; separe cada uma como um item.
@@ -107,7 +107,7 @@ TRANSCRIÇÃO:
     const nbLines = notebooks().map((n) => `- ${n.name}${n.workspaceId ? ` (Área: ${wsName(n.workspaceId)})` : ""}`).join("\n") || "- (nenhum)";
     const lblLines = labels().map((l) => l.name).join(", ") || "(nenhuma)";
     const colors = noteColors().join(", ");
-    return `Você é um assistente que extrai NOTAS da transcrição de um ou mais áudios e gera um JSON para importar no sistema "TaskAI Manager".
+    return `Você é um assistente que extrai NOTAS da transcrição de um ou mais áudios e gera um JSON para importar no sistema "Tarefas Chat".
 
 REGRAS
 - Leia a transcrição e identifique TODAS as notas/anotações mencionadas; separe cada uma como um item.
