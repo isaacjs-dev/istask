@@ -47,4 +47,16 @@ return [
         'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
     ],
 
+    /*
+    | Login com Google (OAuth via Laravel Socialite). Crie as credenciais no
+    | Google Cloud Console → Credentials → OAuth client ID (tipo "Web application")
+    | e use como "Authorized redirect URI" o valor de GOOGLE_REDIRECT_URI.
+    | Sem CLIENT_ID configurado, o botão "Entrar com Google" não aparece (placeholder).
+    */
+    'google' => [
+        'client_id'     => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect'      => env('GOOGLE_REDIRECT_URI', env('APP_URL').'/auth/google/callback'),
+    ],
+
 ];

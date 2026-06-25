@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AppController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\GoogleController;
+use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\AiController;
 use App\Http\Controllers\Api\AttachmentController;
@@ -31,6 +33,16 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
     Route::post('/register', [AuthController::class, 'register']);
+
+    // Recuperação de senha (fluxo nativo do Laravel).
+    Route::get('/forgot-password', [PasswordResetController::class, 'showLinkRequest'])->name('password.request');
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])->name('password.email');
+    Route::get('/reset-password/{token}', [PasswordResetController::class, 'showReset'])->name('password.reset');
+    Route::post('/reset-password', [PasswordResetController::class, 'reset'])->name('password.update');
+
+    // Login com Google (OAuth). As rotas existem sempre; o botão só aparece quando configurado.
+    Route::get('/auth/google/redirect', [GoogleController::class, 'redirect'])->name('google.redirect');
+    Route::get('/auth/google/callback', [GoogleController::class, 'callback'])->name('google.callback');
 });
 
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout')->middleware('auth');
